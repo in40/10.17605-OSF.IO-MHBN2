@@ -7,10 +7,126 @@ from smoke_tui.app import (
     HomeScreen,
     MainScreen,
     PilotScreen,
+    PromptViewerScreen,
     RaterScreen,
     SmokeScreen,
     SmokeApp,
+    SummarizeScreen,
+    WebTaskScreen,
 )
+
+
+def test_summarize_screen_lists_summarizers(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = SummarizeScreen("smoke/texts", "smoke/summaries")
+            app.push_screen(scr)
+            await pilot.pause()
+            assert isinstance(app.screen, SummarizeScreen)
+            n = len(app.settings["summarizers"])
+            assert n >= 1
+            assert scr.query_one("#summ_run0")
+            assert scr.query_one("#summ_refresh")
+
+    asyncio.run(drive())
+
+
+def test_summarize_done_status(tmp_path):
+    # summ_dir as an absolute path overrides REPO join in _is_done
+    scr = SummarizeScreen("smoke/texts", str(tmp_path))
+    assert scr._is_done("nope") is False
+    d = tmp_path / "qwen-sys" / "SMK-NEWS-01" / "r0p5"
+    d.mkdir(parents=True)
+    (d / "summary_0.txt").write_text("x", encoding="utf-8")
+    assert scr._is_done("qwen-sys") is True
+
+
+def test_webtask_screen_mounts(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = WebTaskScreen()
+            app.push_screen(scr)
+            await pilot.pause()
+            assert isinstance(app.screen, WebTaskScreen)
+            assert scr.query_one("#wt_export")
+            assert scr.query_one("#wt_import")
+            assert scr.query_one("#wt_sheet")
+
+    asyncio.run(drive())
+
+
+def test_collect_prompts_groups():
+    from smoke_tui.prompt_registry import collect_prompts
+
+    groups = dict(collect_prompts())
+    assert set(groups) == {
+        "Summarizer",
+        "Judge (rubric)",
+        "Itemgen — generate",
+        "Itemgen — score",
+    }
+    assert "DEFAULT_BASE" in dict(groups["Summarizer"])
+    assert "COMBINED_PROMPT_RU" in dict(groups["Judge (rubric)"])
+    assert "QA_GEN" in dict(groups["Itemgen — generate"])
+    assert "QA_JUDGE" in dict(groups["Itemgen — score"])
+
+
+def test_prompt_hash_deterministic():
+    from smoke_tui.prompt_registry import prompt_hash
+
+    assert prompt_hash("abc") == prompt_hash("abc")
+    assert len(prompt_hash("abc")) == 64
+    assert prompt_hash("abc") != prompt_hash("abd")
+
+
+def test_prompt_viewer_mounts(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = PromptViewerScreen()
+            app.push_screen(scr)
+            await pilot.pause()
+            assert isinstance(app.screen, PromptViewerScreen)
+            assert len(scr.items) >= 13  # all prompts collected
+
+    asyncio.run(drive())
+
+
+def test_prompt_viewer_select_shows_text_and_hash(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = PromptViewerScreen()
+            app.push_screen(scr)
+            await pilot.pause()
+            gname, name, text = scr.items[0]
+
+            class _Ev:
+                class list_view:
+                    index = 0
+
+            scr.on_list_view_selected(_Ev())
+            await pilot.pause()
+            detail = str(scr.query_one("#pv_detail", Static).render())
+            assert name in detail
+            assert "SHA-256" in detail
+            assert text[:20] in detail
+
+    asyncio.run(drive())
 
 
 def test_home_is_three_section_hub(monkeypatch, tmp_path):
@@ -211,6 +327,59 @@ def test_rater_no_with_note_records(monkeypatch, tmp_path):
             assert ratings[0]["note"] == "dangling reference"
 
     asyncio.run(drive())
+
+
+def test_smoke_screen_has_itemgen_buttons(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = SmokeScreen()
+            app.push_screen(scr)
+            await pilot.pause()
+            assert scr.query_one("#s_items")
+            assert scr.query_one("#s_qa")
+
+    asyncio.run(drive())
+
+
+def test_corpus_screen_has_itemgen_buttons(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = PilotScreen()
+            app.push_screen(scr)
+            await pilot.pause()
+            assert scr.query_one("#p_items")
+            assert scr.query_one("#p_qa")
+            assert scr.items_dir == "pilot_data/items"
+
+    asyncio.run(drive())
+
+
+def test_results_format_qa():
+    from smoke_tui.app import ResultsScreen
+
+    qa = {
+        "generator_model": "qwen3.5-122b",
+        "scores": {
+            "qa": {"correct": 2, "total": 3, "accuracy": 0.6667},
+            "mcq": {"raw": 0.5, "chance_corrected": 0.3333},
+            "nli": {"accuracy": 0.5},
+            "stance": {"accuracy": 0.25},
+        },
+    }
+    out = ResultsScreen._format_qa(qa)
+    assert "QA-accuracy" in out
+    assert "2/3" in out
+    assert "chance-corrected 0.3333" in out
+    assert "NLI: 0.5" in out
+    assert "stance: 0.25" in out
 
 
 def test_rater_skip_records_nothing(monkeypatch, tmp_path):

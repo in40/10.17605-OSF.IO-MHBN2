@@ -85,6 +85,8 @@ class HomeScreen(Screen):
             yield Button("SMOKE  (10 texts · plumbing check)", id="smoke", variant="primary")
             yield Button("PILOT  (50 texts · 2-rater gate)", id="pilot", variant="warning")
             yield Button("MAIN   (400 texts · confirmatory)", id="main", variant="primary")
+            yield Button("Web-UI models (Alisa / GigaChat)", id="webui", variant="warning")
+            yield Button("View / audit prompts", id="prompts")
             yield Button("Configure", id="config")
             yield Button("Quit", id="quit", variant="error")
 
@@ -94,6 +96,10 @@ class HomeScreen(Screen):
             self.app.exit()
         elif sid == "config":
             self.app.push_screen(ConfigScreen())
+        elif sid == "webui":
+            self.app.push_screen(WebTaskScreen())
+        elif sid == "prompts":
+            self.app.push_screen(PromptViewerScreen())
         elif sid == "smoke":
             self.app.push_screen(SmokeScreen())
         elif sid == "pilot":
@@ -373,6 +379,8 @@ class ResultsScreen(Screen):
         summary = sf.read_text(encoding="utf-8")
         jf = sf.with_suffix(".judge.json")
         judge = json.loads(jf.read_text(encoding="utf-8")) if jf.exists() else None
+        qaf = sf.with_name(sf.stem + ".qa.json")
+        qa = json.loads(qaf.read_text(encoding="utf-8")) if qaf.exists() else None
         detail = self.query_one("#res-detail-text", Static)
         parts = [f"[b]SOURCE[/b]\n{source}\n\n[b]SUMMARY[/b]\n{summary}"]
         if judge and judge.get("scores"):
@@ -380,7 +388,29 @@ class ResultsScreen(Screen):
             parts.append(f"[b]JUDGE[/b] ({judge.get('judge_model','')})\n" + "\n".join(
                 f"  {k}: {v}" for k, v in sc.items()
             ))
+        if qa and qa.get("scores"):
+            parts.append(self._format_qa(qa))
         detail.update("\n\n".join(parts))
+
+    @staticmethod
+    def _format_qa(qa: dict) -> str:
+        s = qa.get("scores", {})
+        lines = [f"[b]ITEM-BASED SCORES[/b] (generator: {qa.get('generator_model','')})"]
+        if "qa" in s:
+            lines.append(
+                f"  facts / QA-accuracy: {s['qa']['correct']}/{s['qa']['total']} "
+                f"= {s['qa']['accuracy']}"
+            )
+        if "mcq" in s:
+            lines.append(
+                f"  comprehension / MCQ: raw {s['mcq']['raw']}, "
+                f"chance-corrected {s['mcq']['chance_corrected']}"
+            )
+        if "nli" in s:
+            lines.append(f"  logic / NLI: {s['nli']['accuracy']}")
+        if "stance" in s:
+            lines.append(f"  stance: {s['stance']['accuracy']}")
+        return "\n".join(lines)
 
     def _source_for(self, sf: Path) -> str:
         text_id = sf.parent.parent.name
@@ -394,6 +424,10 @@ class ResultsScreen(Screen):
 
 class SmokeScreen(Screen):
     """Smoke = end-to-end plumbing check on 10 texts (2/genre)."""
+
+    TEXTS = "smoke/texts"
+    SUMM = "smoke/summaries"
+    ITEMS = "smoke/items"
 
     def compose(self) -> ComposeResult:
         yield Static("SMOKE CORPUS", id="title", classes="big")
@@ -409,14 +443,18 @@ class SmokeScreen(Screen):
             yield Static("2. Validate corpus", classes="step-h")
             with Horizontal(id="s-step2"):
                 yield Button("Run 9 checks", id="s_validate", variant="primary")
-            yield Static("3. Summarize (r-grid)", classes="step-h")
+            yield Static("3. Generate items (from texts)", classes="step-h")
             with Horizontal(id="s-step3"):
-                yield Button("Summarize smoke texts", id="s_summ", variant="primary")
-            yield Static("4. Judge summaries", classes="step-h")
+                yield Button("Generate QA/MCQ/NLI/stance", id="s_items", variant="primary")
+            yield Static("4. Summarize (r-grid)", classes="step-h")
             with Horizontal(id="s-step4"):
-                yield Button("Judge smoke summaries", id="s_judge", variant="primary")
-            yield Static("5. Browse results", classes="step-h")
+                yield Button("Summarize smoke texts", id="s_summ", variant="primary")
+            yield Static("5. Score summaries", classes="step-h")
             with Horizontal(id="s-step5"):
+                yield Button("Judge (rubric)", id="s_judge", variant="primary")
+                yield Button("QA-accuracy (items)", id="s_qa", variant="primary")
+            yield Static("6. Browse results", classes="step-h")
+            with Horizontal(id="s-step6"):
                 yield Button("Browse results", id="s_browse")
         yield Button("Back", id="s_back")
 
@@ -434,13 +472,12 @@ class SmokeScreen(Screen):
                 RunScreen("Validate",
                          [("validate corpus", [PY, "-m", "smoke_collector.validate"])])
             )
+        elif bid == "s_items":
+            cmd = [PY, "-m", "itemgen", "generate",
+                   "--texts-dir", self.TEXTS, "--items-dir", self.ITEMS]
+            self.app.push_screen(RunScreen("Generate items", [("generate items", cmd)]))
         elif bid == "s_summ":
-            steps = [
-                (f"{s.get('type','llm')} · {s.get('system','?')}",
-                 [PY, "-m", "smoke_summarizer", *S.summarizer_args(s)])
-                for s in self.app.settings["summarizers"]
-            ]
-            self.app.push_screen(RunScreen("Summarize smoke", steps))
+            self.app.push_screen(SummarizeScreen(self.TEXTS, self.SUMM))
         elif bid == "s_judge":
             args = S.judge_args(self.app.settings["judge"])
             self.app.push_screen(
@@ -448,6 +485,10 @@ class SmokeScreen(Screen):
                          [(f"judge · {self.app.settings['judge'].get('model','?')}",
                            [PY, "-m", "smoke_judge", *args])])
             )
+        elif bid == "s_qa":
+            cmd = [PY, "-m", "itemgen", "score",
+                   "--items-dir", self.ITEMS, "--summaries-dir", self.SUMM]
+            self.app.push_screen(RunScreen("QA-accuracy smoke", [("score QA", cmd)]))
         elif bid == "s_browse":
             self.app.push_screen(ResultsScreen())
 
@@ -465,6 +506,7 @@ class CorpusScreen(Screen):
         split: str,
         texts_dir: str,
         summ_dir: str,
+        items_dir: str,
         default_scale: int,
         purpose: str,
     ) -> None:
@@ -473,6 +515,7 @@ class CorpusScreen(Screen):
         self.split = split
         self.texts_dir = texts_dir
         self.summ_dir = summ_dir
+        self.items_dir = items_dir
         self.default_scale = str(default_scale)
         self.purpose = purpose
 
@@ -499,18 +542,22 @@ class CorpusScreen(Screen):
                 yield Label("Rater id:")
                 yield Input(value="", id="p_rater", placeholder="e.g. alice")
                 yield Button("Start rating", id="p_rate", variant="warning")
-            yield Static("3. Summarize (r-grid)", classes="step-h")
+            yield Static("3. Generate items (from texts)", classes="step-h")
             with Horizontal(id="p-step3"):
+                yield Button("Generate QA/MCQ/NLI/stance", id="p_items", variant="primary")
+            yield Static("4. Summarize (r-grid)", classes="step-h")
+            with Horizontal(id="p-step4"):
                 yield Button(
                     f"Summarize {self.phase.lower()} texts", id="p_summ", variant="primary"
                 )
-            yield Static("4. Judge summaries", classes="step-h")
-            with Horizontal(id="p-step4"):
-                yield Button(
-                    f"Judge {self.phase.lower()} summaries", id="p_judge", variant="primary"
-                )
-            yield Static("5. Browse", classes="step-h")
+            yield Static("5. Score summaries", classes="step-h")
             with Horizontal(id="p-step5"):
+                yield Button(
+                    f"Judge {self.phase.lower()} (rubric)", id="p_judge", variant="primary"
+                )
+                yield Button("QA-accuracy (items)", id="p_qa", variant="primary")
+            yield Static("6. Browse", classes="step-h")
+            with Horizontal(id="p-step6"):
                 yield Button("Browse texts", id="p_browse")
                 yield Button("Browse results", id="p_bresults")
         with Vertical(id="pilot-status-pane"):
@@ -537,6 +584,9 @@ class CorpusScreen(Screen):
         n_judg = (
             len(list(summ_dir.glob("**/*.judge.json"))) if summ_dir.exists() else 0
         )
+        n_qa = len(list(summ_dir.glob("**/*.qa.json"))) if summ_dir.exists() else 0
+        items_dir = REPO / self.items_dir
+        n_items = len(list(items_dir.glob("*.items.json"))) if items_dir.exists() else 0
         lines = [f"=== {self.phase} status ==="]
         lines.append(
             f"[1] texts: {len(texts)}   "
@@ -549,7 +599,8 @@ class CorpusScreen(Screen):
         )
         present = sorted({r["rater"] for r in ratings})
         lines.append(f"    raters: {', '.join(present) if present else '(none)'}")
-        lines.append(f"[3] summaries: {n_summ}   [4] judgments: {n_judg}")
+        lines.append(f"[3] items: {n_items}   [4] summaries: {n_summ}")
+        lines.append(f"[5] judgments: {n_judg}   [5] QA-scored: {n_qa}")
         if full:
             dis = sorted(t for t, v in agg.items() if v["status"] == "disagree")
             if dis:
@@ -579,24 +630,32 @@ class CorpusScreen(Screen):
                 self.notify("Enter a rater id first", severity="warning")
                 return
             self.app.push_screen(RaterScreen(rater, split=self.split))
+        elif bid == "p_items":
+            cmd = [PY, "-m", "itemgen", "generate",
+                   "--texts-dir", self.texts_dir, "--items-dir", self.items_dir]
+            self.app.push_screen(
+                RunScreen(f"Generate {self.phase.lower()} items",
+                         [("generate items", cmd)])
+            )
         elif bid == "p_summ":
-            steps = [
-                (f"{s.get('type','llm')} · {s.get('system','?')}",
-                 [PY, "-m", "smoke_summarizer",
-                  *S.pilot_summarizer_args(s, self.texts_dir, self.summ_dir)])
-                for s in self.app.settings["summarizers"]
-            ]
-            self.app.push_screen(RunScreen(f"Summarize {self.phase.lower()}", steps))
+            self.app.push_screen(SummarizeScreen(self.texts_dir, self.summ_dir))
         elif bid == "p_judge":
             cmd = [PY, "-m", "smoke_judge",
                    *S.pilot_judge_args(
                        self.app.settings["judge"], self.summ_dir, self.texts_dir
-                   )]
+                    )]
             self.app.push_screen(
                 RunScreen(
                     f"Judge {self.phase.lower()}",
                     [(f"judge {self.phase.lower()} summaries", cmd)],
                 )
+            )
+        elif bid == "p_qa":
+            cmd = [PY, "-m", "itemgen", "score",
+                   "--items-dir", self.items_dir, "--summaries-dir", self.summ_dir]
+            self.app.push_screen(
+                RunScreen(f"QA-accuracy {self.phase.lower()}",
+                         [("score QA", cmd)])
             )
         elif bid == "p_browse":
             from pilot import raters as R
@@ -618,6 +677,7 @@ class PilotScreen(CorpusScreen):
             split="pilot",
             texts_dir="pilot_data/texts",
             summ_dir="pilot_data/summaries",
+            items_dir="pilot_data/items",
             default_scale=10,
             purpose=(
                 "Calibration gate: a larger balanced sample (10/genre) to validate "
@@ -635,6 +695,7 @@ class MainScreen(CorpusScreen):
             split="main",
             texts_dir="pilot_data/main",
             summ_dir="pilot_data/main_summaries",
+            items_dir="pilot_data/main_items",
             default_scale=40,
             purpose=(
                 "Confirmatory corpus: the real study data (~400 texts). Built by "
@@ -780,6 +841,181 @@ class PilotBrowseScreen(Screen):
             self.app.pop_screen()
 
 
+class PromptViewerScreen(Screen):
+    """Browse every prompt template in the pipeline with its SHA-256 hash."""
+
+    def compose(self) -> ComposeResult:
+        yield Static("PROMPT VIEWER", id="title", classes="big")
+        yield Static(
+            "All prompt templates (RU). Hash = SHA-256 of the exact string, for "
+            "the freeze / OSF manifest.",
+            id="p_purpose",
+        )
+        with Horizontal(id="res-body"):
+            with Vertical(id="res-list-pane"):
+                yield ListView(id="pv_list")
+            with VerticalScroll(id="res-detail"):
+                yield Static("Select a prompt", id="pv_detail")
+        yield Button("Back", id="pv_back")
+
+    def on_mount(self) -> None:
+        from .prompt_registry import collect_prompts
+
+        self.groups = collect_prompts()
+        self.items: list[tuple[str, str, str]] = []
+        lv = self.query_one("#pv_list", ListView)
+        for gname, prompts in self.groups:
+            for name, text in prompts:
+                self.items.append((gname, name, text))
+                lv.append(ListItem(Static(f"{gname} · {name}")))
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.list_view.index is None:
+            return
+        from .prompt_registry import prompt_hash
+
+        gname, name, text = self.items[event.list_view.index]
+        h = prompt_hash(text)
+        self.query_one("#pv_detail", Static).update(
+            f"[b]{gname} · {name}[/b]\n"
+            f"[dim]SHA-256: {h}  ({len(text)} chars)[/dim]\n\n{text}"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "pv_back":
+            self.app.pop_screen()
+
+
+class SummarizeScreen(Screen):
+    """Run summarizers ONE model at a time (endpoint serves one model at a time).
+
+    Shows each configured summarizer with a done/pending status; each Run
+    launches a single-model pass. Switch the endpoint model before each pass.
+    """
+
+    def __init__(self, texts_dir: str, summ_dir: str) -> None:
+        super().__init__()
+        self.texts_dir = texts_dir
+        self.summ_dir = summ_dir
+
+    def compose(self) -> ComposeResult:
+        yield Static("SUMMARIZE — one model per pass", id="title", classes="big")
+        yield Static(
+            "Only one model is active on the endpoint at a time. Switch the "
+            "endpoint to the model, then Run that pass. Passes are resumable — "
+            "already-generated summaries are skipped.",
+            id="p_purpose",
+        )
+        with VerticalScroll(id="summ-list"):
+            for i, s in enumerate(self.app.settings["summarizers"]):
+                with Horizontal(id=f"summ-row{i}"):
+                    yield Static(self._row_label(s), id=f"summ_lbl{i}")
+                    yield Button("Run", id=f"summ_run{i}", variant="primary")
+        with Horizontal(id="summ-foot"):
+            yield Button("Refresh status", id="summ_refresh")
+            yield Button("Back", id="summ_back")
+
+    def _is_done(self, system: str) -> bool:
+        d = REPO / self.summ_dir / str(system)
+        return d.exists() and any(d.rglob("summary_*.txt"))
+
+    def _row_label(self, s: dict) -> str:
+        stype = s.get("type", "llm")
+        sysname = s.get("system", "?")
+        model = s.get("model", "")
+        mark = "[green]✓ done[/green]" if self._is_done(sysname) else "[dim]— pending[/dim]"
+        return f"[b][{stype}][/b] {sysname} · {model}   {mark}"
+
+    def _refresh_status(self, *_args) -> None:
+        for i, s in enumerate(self.app.settings["summarizers"]):
+            self.query_one(f"#summ_lbl{i}", Static).update(self._row_label(s))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        if bid == "summ_back":
+            self.app.pop_screen()
+        elif bid == "summ_refresh":
+            self._refresh_status()
+        elif bid.startswith("summ_run"):
+            i = int(bid[len("summ_run"):])
+            s = self.app.settings["summarizers"][i]
+            cmd = [PY, "-m", "smoke_summarizer",
+                   *S.pilot_summarizer_args(s, self.texts_dir, self.summ_dir)]
+            self.app.push_screen(
+                RunScreen(
+                    f"Summarize · {s.get('system','?')}",
+                    [(f"{s.get('system','?')} · {s.get('model','')}", cmd)],
+                ),
+                callback=self._refresh_status,
+            )
+
+
+class WebTaskScreen(Screen):
+    """Export/import task sheets for web-UI-only models (Alisa, GigaChat)."""
+
+    def compose(self) -> ComposeResult:
+        yield Static("WEB-UI MODELS", id="title", classes="big")
+        yield Static(
+            "For models with no API (Alisa / GigaChat): export a self-contained "
+            "task sheet, run each prompt in the web UI, paste the answers back "
+            "into the sheet, then import. Imported summaries use the standard "
+            "layout, so judge + QA score them like any other.",
+            id="p_purpose",
+        )
+        with VerticalScroll(id="wt-body"):
+            yield Static("1. Export task sheet", classes="step-h")
+            with Horizontal(id="wt-exp"):
+                yield Label("System:")
+                yield Input(value="alisa", id="wt_system")
+                yield Label("Texts dir:")
+                yield Input(value="smoke/texts", id="wt_texts")
+                yield Label("Levels:")
+                yield Input(value="", id="wt_levels", placeholder="blank = r-grid")
+                yield Button("Export", id="wt_export", variant="primary")
+            yield Static("2. Import the filled sheet", classes="step-h")
+            with Horizontal(id="wt-imp"):
+                yield Label("Sheet path:")
+                yield Input(value="", id="wt_sheet", placeholder="/path/filled.md")
+                yield Label("Operator:")
+                yield Input(value="", id="wt_op")
+                yield Label("Out dir:")
+                yield Input(value="smoke/summaries", id="wt_out")
+                yield Button("Import", id="wt_import", variant="warning")
+        yield Button("Back", id="wt_back")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        if bid == "wt_back":
+            self.app.pop_screen()
+        elif bid == "wt_export":
+            system = (self.query_one("#wt_system", Input).value or "alisa").strip()
+            texts = (self.query_one("#wt_texts", Input).value or "smoke/texts").strip()
+            levels = (self.query_one("#wt_levels", Input).value or "").strip()
+            out = f"{system}_tasks.md"
+            cmd = [PY, "-m", "webtask", "export", "--system", system,
+                   "--texts-dir", texts, "--out", out]
+            if levels:
+                cmd += ["--levels", levels]
+            self.app.push_screen(
+                RunScreen(f"Export {system} sheet", [("export", cmd)])
+            )
+        elif bid == "wt_import":
+            system = (self.query_one("#wt_system", Input).value or "alisa").strip()
+            sheet = (self.query_one("#wt_sheet", Input).value or "").strip()
+            if not sheet:
+                self.notify("Enter the filled sheet path first", severity="warning")
+                return
+            op = (self.query_one("#wt_op", Input).value or "").strip()
+            out = (self.query_one("#wt_out", Input).value or "smoke/summaries").strip()
+            cmd = [PY, "-m", "webtask", "import", "--system", system,
+                   "--sheet", sheet, "--out-dir", out]
+            if op:
+                cmd += ["--operator", op]
+            self.app.push_screen(
+                RunScreen(f"Import {system} sheet", [("import", cmd)])
+            )
+
+
 class SmokeApp(App):
     CSS = """
     #title { text-align: center; text-style: bold; padding: 1 0; }
@@ -798,7 +1034,10 @@ class SmokeApp(App):
     #p_purpose { padding: 0 2 1 2; color: $text-muted; }
     #pilot-steps { height: 1fr; }
     .step-h { text-style: bold; margin-top: 1; padding: 0 1; }
-    #p-step1, #p-step2, #p-step3, #p-step4, #p-step5 {
+    #p-step1, #p-step2, #p-step3, #p-step4, #p-step5, #p-step6 {
+        height: 3; align-horizontal: center;
+    }
+    #s-step1, #s-step2, #s-step3, #s-step4, #s-step5, #s-step6 {
         height: 3; align-horizontal: center;
     }
     #p-step1 Label, #p-step2 Label { margin: 0 1 0 2; }
@@ -810,6 +1049,14 @@ class SmokeApp(App):
     #r_text_scroll { height: 1fr; border: round $secondary; padding: 1 2; }
     #r_note { width: 100%; }
     #r_actions { height: 3; dock: bottom; align-horizontal: center; }
+    #summ-list { height: 1fr; }
+    .summ-row, #summ-row0, #summ-row1, #summ-row2, #summ-row3, #summ-row4,
+    #summ-row5, #summ-row6, #summ-row7 { height: 3; align-horizontal: left; }
+    #summ-foot { height: 3; dock: bottom; align-horizontal: center; }
+    #wt-body { height: 1fr; }
+    #wt-exp, #wt-imp { height: 3; align-horizontal: center; }
+    #wt-exp Label, #wt-imp Label { margin: 0 1 0 2; }
+    #wt-exp Input, #wt-imp Input { width: 22; }
     """
 
     def __init__(self) -> None:
