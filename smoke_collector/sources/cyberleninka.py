@@ -22,13 +22,33 @@ log = logging.getLogger(__name__)
 BASE = "https://cyberleninka.ru"
 SEEDS = [
     "/article/n/ponyatie-ekonomicheskoy-bezopasnosti-predpriyatiya",
-    "/article/n/ponyatie-kultura-v-psihologii",
-    "/article/n/tehnologii-obscheniya-v-sotsialnoy-rabote",
+    "/article/n/infrastruktura-otkrytoy-nauki",
+    "/article/n/otkrytyy-dostup-k-nauke-mify-i-realnost",
+    "/article/n/vozmozhnye-puti-razvitiya-otkrytoy-nauki-v-rossii",
 ]
-MAX_PAGES = 80
+MAX_PAGES = 60
 RATE_DELAY = 1.5
 MATH_SYMBOLS = re.compile(r"[∑∫√≤≥≠≈±×÷∞∂∇∈∪∩⊂⊃⇒⇔]|\\frac|\\sum|\\int|\\alpha|\\beta|\\gamma")
 H1_SUFFIX_RE = re.compile(r"\s*Текст научной статьи по специальности\s*«([^»]+)».*$", re.DOTALL)
+
+
+def _passages(text: str, target: int, tol: float = 0.10) -> list[str]:
+    lo, hi = target * (1 - tol), target * (1 + tol)
+    paras = [p.strip() for p in text.split("\n\n") if p.strip()]
+    out: list[str] = []
+    cur: list[str] = []
+    wc = 0
+    for p in paras:
+        pw = len(p.split())
+        if wc + pw > hi and wc >= lo:
+            out.append("\n\n".join(cur))
+            cur = []
+            wc = 0
+        cur.append(p)
+        wc += pw
+    if lo <= wc <= hi:
+        out.append("\n\n".join(cur))
+    return out
 
 
 def _extract_abstract(text: str) -> str:
@@ -129,6 +149,23 @@ def collect() -> list[Candidate]:
                     notes=f"abstract; math_symbols={math_hits}",
                 )
             )
+        for target in (500, 800):
+            for passage in _passages(text, target):
+                candidates.append(
+                    Candidate(
+                        text=passage,
+                        source_url=url,
+                        source_name="CyberLeninka",
+                        genre="sci",
+                        title=f"{art['title']} (фрагмент)",
+                        author="",
+                        date_published="",
+                        license="CC BY 4.0",
+                        license_proof=url,
+                        topic=art["specialty"],
+                        notes=f"passage~{target}; math_symbols={math_hits}",
+                    )
+                )
         time.sleep(RATE_DELAY)
     log.info("cyberleninka: fetched %d pages, %d CC-BY candidates", fetched, len(candidates))
     return candidates

@@ -79,6 +79,16 @@ smoke/texts/{text_id}.meta.json    # url, license, wordcount, pii_check, hashes
 <!-- smoke_collector:table:start -->
 | text_id | жанр | источник | wordcount | корзина | лицензия | PII | дубликаты | самодостаточность |
 |---|---|---|---|---|---|---|---|---|
+| SMK-DIA-01 | dia | inkoziev/Conversations (RLDD) | 750 | ~800 | CC BY 4.0 (inkoziev/Conversations, per d | ok | ok | ok |
+| SMK-FIC-01 | fic | ru.wikisource.org | 464 | ~500 | Public domain (Project Gutenberg) | ok | ok | ok |
+| SMK-INS-01 | ins | Процедурная страница (gov) | 297 | ~300 | Public government reference material (fr | ok | ok | ok |
+| SMK-INS-02 | ins | Процедурная страница (gov) | 471 | ~500 | Public government reference material (fr | ok | ok | ok |
+| SMK-NEWS-01 | news | Lenta.ru (dump v1.1) | 302 | ~300 | CC BY-NC 4.0 (Lenta.Ru-News-Dataset v1.1 | ok | ok | ok |
+| SMK-NEWS-02 | news | Lenta.ru (dump v1.1) | 451 | ~500 | CC BY-NC 4.0 (Lenta.Ru-News-Dataset v1.1 | ok | ok | ok |
+| SMK-NEWS-03 | news | Lenta.ru (dump v1.1) | 731 | ~800 | CC BY-NC 4.0 (Lenta.Ru-News-Dataset v1.1 | ok | ok | ok |
+| SMK-SCI-01 | sci | CyberLeninka | 170 | ~150 | CC BY 4.0 | ok | ok | ok |
+| SMK-SCI-02 | sci | CyberLeninka | 508 | ~500 | CC BY 4.0 | ok | ok | ok |
+| SMK-SCI-03 | sci | CyberLeninka | 766 | ~800 | CC BY 4.0 | ok | ok | ok |
 <!-- smoke_collector:table:end -->
 
 ---

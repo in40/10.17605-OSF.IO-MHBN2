@@ -1,0 +1,17 @@
+{
+  "text_id": "PLT-INS-05",
+  "split": "pilot",
+  "genre": "ins",
+  "source_url": "https://cbr.ru/faq/pnp/",
+  "source_name": "Процедурная страница (gov)",
+  "author": "",
+  "title": "Противодействие нелегальной деятельности на финансовом рынке",
+  "date_accessed": "2026-09-23",
+  "date_published": "",
+  "license": "Public government reference material (free citation); access date recorded",
+  "license_proof": "https://cbr.ru/faq/pnp/",
+  "wordcount": 471,
+  "language": "ru",
+  "topic": "Противодействие нелегальной деятельности на финансовом рынке",
+  "notes": "procedural_pages scraper"
+}

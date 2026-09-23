@@ -1,0 +1,17 @@
+{
+  "text_id": "PLT-NEWS-07",
+  "split": "pilot",
+  "genre": "news",
+  "source_url": "https://lenta.ru/news/2001/09/04/sharon/",
+  "source_name": "Lenta.ru (dump v1.1)",
+  "author": "",
+  "title": "Путин предлагает Шарону выполнить план Митчелла",
+  "date_accessed": "2026-09-23",
+  "date_published": "2001/09/04",
+  "license": "CC BY-NC 4.0 (Lenta.Ru-News-Dataset v1.1); Lenta.ru RSS export: https://lenta.ru/info/posts/export/",
+  "license_proof": "https://lenta.ru/info/posts/export/",
+  "wordcount": 469,
+  "language": "ru",
+  "topic": "Россия",
+  "notes": "dump row id=None"
+}

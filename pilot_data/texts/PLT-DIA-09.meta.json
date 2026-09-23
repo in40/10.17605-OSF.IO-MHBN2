@@ -1,0 +1,17 @@
+{
+  "text_id": "PLT-DIA-09",
+  "split": "pilot",
+  "genre": "dia",
+  "source_url": "https://huggingface.co/datasets/inkoziev/Conversations",
+  "source_name": "inkoziev/Conversations (RLDD)",
+  "author": "",
+  "title": "",
+  "date_accessed": "2026-09-23",
+  "date_published": "",
+  "license": "CC BY 4.0 (inkoziev/Conversations, per dataset README)",
+  "license_proof": "https://huggingface.co/datasets/inkoziev/Conversations/blob/main/README.md",
+  "wordcount": 383,
+  "language": "ru",
+  "topic": "librusec",
+  "notes": "jsonl line 169809"
+}

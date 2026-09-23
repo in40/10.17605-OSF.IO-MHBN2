@@ -1,0 +1,17 @@
+{
+  "text_id": "PLT-INS-04",
+  "split": "pilot",
+  "genre": "ins",
+  "source_url": "https://cbr.ru/faq/fintekh/",
+  "source_name": "Процедурная страница (gov)",
+  "author": "",
+  "title": "Открытые API",
+  "date_accessed": "2026-09-23",
+  "date_published": "",
+  "license": "Public government reference material (free citation); access date recorded",
+  "license_proof": "https://cbr.ru/faq/fintekh/",
+  "wordcount": 288,
+  "language": "ru",
+  "topic": "Открытые API",
+  "notes": "procedural_pages scraper"
+}

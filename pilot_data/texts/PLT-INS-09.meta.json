@@ -1,0 +1,17 @@
+{
+  "text_id": "PLT-INS-09",
+  "split": "pilot",
+  "genre": "ins",
+  "source_url": "https://cbr.ru/faq/rcb/",
+  "source_name": "Процедурная страница (gov)",
+  "author": "",
+  "title": "Форекс",
+  "date_accessed": "2026-09-23",
+  "date_published": "",
+  "license": "Public government reference material (free citation); access date recorded",
+  "license_proof": "https://cbr.ru/faq/rcb/",
+  "wordcount": 421,
+  "language": "ru",
+  "topic": "Форекс",
+  "notes": "procedural_pages scraper"
+}

@@ -1,0 +1,18 @@
+# Curated list of procedural/instruction source URLs (one per line).
+# Fetched via the configurable Fetcher (direct/docling/mcp). Lines starting with # are ignored.
+# cbr.ru FAQ topics (server-rendered, reliable):
+https://cbr.ru/faq/credit_h/
+https://cbr.ru/faq/information_security/blokirovka-kart/
+https://cbr.ru/faq/pnp/
+https://cbr.ru/faq/bank_s/
+https://cbr.ru/faq/insh/
+https://cbr.ru/faq/microfin/
+https://cbr.ru/faq/dkp/
+https://cbr.ru/faq/ndo/
+https://cbr.ru/faq/nps/
+https://cbr.ru/faq/rcb/
+https://cbr.ru/faq/fintekh/
+https://cbr.ru/faq/client/
+https://cbr.ru/faq/pens_k_inv/
+https://cbr.ru/faq/w_fin_sector/investicii-v-zoloto/
+# Add more static gov / ministry / portal URLs here as they are verified.

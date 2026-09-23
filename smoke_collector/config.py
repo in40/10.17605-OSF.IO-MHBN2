@@ -6,6 +6,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = REPO_ROOT / "smoke" / "texts"
+ARCHIVE_DIR = REPO_ROOT / "smoke" / "archive"
+MANIFEST_PATH = REPO_ROOT / "smoke" / "candidates_manifest.json"
 SMOKE_TEST_MD = REPO_ROOT / "SMOKE_TEST.md"
 CACHE_DIR = Path.home() / ".cache" / "smoke_collector"
 LOG_FILE = REPO_ROOT / "smoke_collector.log"
@@ -24,6 +26,8 @@ GENRES = {
 BUCKET_TARGETS = (150, 300, 500, 800)
 BUCKET_CAPACITY = {150: 1, 300: 2, 500: 4, 800: 3}
 BUCKET_TOLERANCE = 0.10
+# Floor bucket: genre min is 150, so only upward slack makes sense.
+BUCKET_RANGES = {150: (150, 180)}
 
 # Required (genre, bucket) slots per SMOKE_TEXTS_SPEC.md length table.
 SLOTS: tuple[tuple[str, int], ...] = (

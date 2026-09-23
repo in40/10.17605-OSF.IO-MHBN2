@@ -1,0 +1,17 @@
+{
+  "text_id": "PLT-INS-03",
+  "split": "pilot",
+  "genre": "ins",
+  "source_url": "https://cbr.ru/faq/w_fin_sector/",
+  "source_name": "Процедурная страница (gov)",
+  "author": "",
+  "title": "Золотовалютные резервы",
+  "date_accessed": "2026-09-23",
+  "date_published": "",
+  "license": "Public government reference material (free citation); access date recorded",
+  "license_proof": "https://cbr.ru/faq/w_fin_sector/",
+  "wordcount": 418,
+  "language": "ru",
+  "topic": "Золотовалютные резервы",
+  "notes": "procedural_pages scraper"
+}

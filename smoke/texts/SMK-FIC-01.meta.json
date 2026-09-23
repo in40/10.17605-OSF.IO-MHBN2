@@ -1,0 +1,17 @@
+{
+  "text_id": "SMK-FIC-01",
+  "genre": "fic",
+  "source_url": "https://ru.wikisource.org/wiki/%D0%98%D0%BE%D0%BD%D1%8B%D1%87%20%28%D0%A7%D0%B5%D1%85%D0%BE%D0%B2%29",
+  "source_name": "ru.wikisource.org",
+  "author": "А. П. Чехов",
+  "title": "Ионыч (Чехов)",
+  "date_accessed": "2026-09-22",
+  "date_published": "",
+  "license": "Public domain (Project Gutenberg)",
+  "license_proof": "https://ru.wikisource.org/wiki/Справка:Авторское_право",
+  "wordcount": 464,
+  "target_bucket": "~500",
+  "language": "ru",
+  "topic": "художественная литература",
+  "notes": "scene 7 of 8"
+}

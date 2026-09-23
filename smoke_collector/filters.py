@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass, field
 
 from .config import (
+    BUCKET_RANGES,
     BUCKET_TARGETS,
     BUCKET_TOLERANCE,
     DUP_REJECT_THRESHOLD,
@@ -54,8 +55,11 @@ def bucket_for(wordcount: int) -> int:
 
 
 def in_bucket_target(wordcount: int, bucket: int) -> bool:
-    lo = bucket * (1 - BUCKET_TOLERANCE)
-    hi = bucket * (1 + BUCKET_TOLERANCE)
+    if bucket in BUCKET_RANGES:
+        lo, hi = BUCKET_RANGES[bucket]
+    else:
+        lo = bucket * (1 - BUCKET_TOLERANCE)
+        hi = bucket * (1 + BUCKET_TOLERANCE)
     return lo <= wordcount <= hi
 
 

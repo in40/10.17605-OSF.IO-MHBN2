@@ -23,9 +23,17 @@ PAGES = [
     "https://cbr.ru/faq/pnp/",
 ]
 STEP_MARKER_RE = re.compile(
-    r"шаг\s*\d|во-первых|во-первых|сначала|затем|после\s+этого|далее|первый\s+шаг",
+    r"шаг\s*\d|во-первых|сначала|затем|после\s+этого|далее|первый\s+шаг",
     re.IGNORECASE,
 )
+PROC_TITLE_RE = re.compile(
+    r"^(как|что\s+делать|каким\s+образом|какие\s+шаги|порядок)",
+    re.IGNORECASE,
+)
+
+
+def _is_procedural(title: str, body: str) -> bool:
+    return bool(STEP_MARKER_RE.search(body) or PROC_TITLE_RE.search(title))
 
 
 def _extract_sections(html: str) -> list[tuple[str, str]]:
@@ -33,6 +41,19 @@ def _extract_sections(html: str) -> list[tuple[str, str]]:
     for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
         tag.decompose()
     sections: list[tuple[str, str]] = []
+    qa_blocks = soup.find_all(class_="dropdown", attrs={"class": lambda c: c and "question" in c})
+    if qa_blocks:
+        for block in qa_blocks:
+            title_el = block.find(class_="question_title")
+            title = title_el.get_text(" ", strip=True) if title_el else ""
+            body_el = block.find(class_="dropdown_content") or block.find(class_="answer")
+            if not body_el:
+                continue
+            parts = [p.get_text(" ", strip=True) for p in body_el.find_all(["p", "li"])]
+            body = "\n\n".join(p for p in parts if p)
+            if title:
+                sections.append((title, body))
+        return sections
     current_head = ""
     buf: list[str] = []
     for el in soup.find_all(["h1", "h2", "h3", "h4", "p", "li"]):
@@ -66,7 +87,7 @@ def collect() -> list[Candidate]:
             wc = len(body.split())
             if not (200 <= wc <= 600):
                 continue
-            if not STEP_MARKER_RE.search(body):
+            if not _is_procedural(head, body):
                 continue
             candidates.append(
                 Candidate(
@@ -79,7 +100,7 @@ def collect() -> list[Candidate]:
                     date_published="",
                     license=config.LICENSES["ins"],
                     license_proof=url,
-                    topic="государственные услуги / финансовые процедуры",
+                    topic=head[:80] if head else "государственные услуги",
                     notes="static procedural section",
                 )
             )

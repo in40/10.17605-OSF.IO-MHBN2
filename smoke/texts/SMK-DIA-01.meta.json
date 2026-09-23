@@ -1,0 +1,17 @@
+{
+  "text_id": "SMK-DIA-01",
+  "genre": "dia",
+  "source_url": "https://huggingface.co/datasets/inkoziev/Conversations",
+  "source_name": "inkoziev/Conversations (RLDD)",
+  "author": "",
+  "title": "",
+  "date_accessed": "2026-09-22",
+  "date_published": "",
+  "license": "CC BY 4.0 (inkoziev/Conversations, per dataset README)",
+  "license_proof": "https://huggingface.co/datasets/inkoziev/Conversations/blob/main/README.md",
+  "wordcount": 750,
+  "target_bucket": "~800",
+  "language": "ru",
+  "topic": "librusec",
+  "notes": "jsonl line 306836"
+}

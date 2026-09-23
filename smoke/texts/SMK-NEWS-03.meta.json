@@ -1,0 +1,17 @@
+{
+  "text_id": "SMK-NEWS-03",
+  "genre": "news",
+  "source_url": "https://lenta.ru/news/2001/12/12/fest/",
+  "source_name": "Lenta.ru (dump v1.1)",
+  "author": "",
+  "title": "В ЦДЛ начинается \"фестиваль премьер\" французского кино",
+  "date_accessed": "2026-09-22",
+  "date_published": "2001/12/12",
+  "license": "CC BY-NC 4.0 (Lenta.Ru-News-Dataset v1.1); Lenta.ru RSS export: https://lenta.ru/info/posts/export/",
+  "license_proof": "https://lenta.ru/info/posts/export/",
+  "wordcount": 731,
+  "target_bucket": "~800",
+  "language": "ru",
+  "topic": "Культура",
+  "notes": "dump row id=None"
+}

@@ -1,0 +1,17 @@
+{
+  "text_id": "PLT-NEWS-01",
+  "split": "pilot",
+  "genre": "news",
+  "source_url": "https://lenta.ru/news/2002/01/02/buchanan/",
+  "source_name": "Lenta.ru (dump v1.1)",
+  "author": "",
+  "title": "Американский Жириновский предрекает Америке и России гибель от безверия",
+  "date_accessed": "2026-09-23",
+  "date_published": "2002/01/02",
+  "license": "CC BY-NC 4.0 (Lenta.Ru-News-Dataset v1.1); Lenta.ru RSS export: https://lenta.ru/info/posts/export/",
+  "license_proof": "https://lenta.ru/info/posts/export/",
+  "wordcount": 796,
+  "language": "ru",
+  "topic": "Культура",
+  "notes": "dump row id=None"
+}

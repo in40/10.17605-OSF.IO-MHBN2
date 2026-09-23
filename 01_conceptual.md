@@ -80,5 +80,7 @@ The confirmatory bottleneck test is not simply whether \(r_{\text{all}}^*\) exce
 
 > This study tests a multidimensional operationalization of meaning-preservation. The four core dimensions are treated as measurable proxies, not as an exhaustive theory of meaning. Findings are conditional on this operationalization and the selected summary-source ensemble. "Meaning-preservation" in this protocol refers to operational scores on these four dimensions, not to a philosophical claim about meaning.
 
+**Ensemble composition.** The summary-source ensemble spans method classes (LLM, hybrid extractive+abstractive, pure extractive, and an algorithmic extractive oracle) so that the bottleneck finding generalizes across method classes rather than being an artifact of LLM behavior. The oracle is a computational extractive-maximin upper bound, **not** a human-written summary; the human role in this protocol is rating/judging, not authoring (see §4.3 and §9).
+
 ---
 

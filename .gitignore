@@ -1,0 +1,16 @@
+# secrets — never commit
+.smoke_key
+*.key
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# logs
+*.log
+
+# generated data (keep if you want to version them; default: ignore)
+smoke/summaries/
+smoke/archive/

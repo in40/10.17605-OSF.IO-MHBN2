@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -15,12 +17,17 @@ from .sources import Candidate
 
 log = logging.getLogger(__name__)
 
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
 SOURCE_MAP = {
     "news": "smoke_collector.sources.lenta",
     "sci": "smoke_collector.sources.cyberleninka",
-    "ins": "smoke_collector.sources.gosuslugi",
+    "ins": "smoke_collector.sources.procedural_pages",
     "fic": "smoke_collector.sources.gutenberg",
     "dia": "smoke_collector.sources.dialogues",
+    # legacy alternative for "ins": smoke_collector.sources.gosuslugi
 }
 
 
@@ -52,7 +59,12 @@ def _next_text_id(genre: str, used: set[str]) -> str:
     return f"SMK-{code}-{n:02d}"
 
 
-def collect_genre(genre: str, balancer: Balancer, selected: dict[str, str]) -> list[dict]:
+def collect_genre(
+    genre: str,
+    balancer: Balancer,
+    selected: dict[str, str],
+    pools: dict[str, list[dict]] | None = None,
+) -> list[dict]:
     """Fill all slots of one genre. Returns saved-text records."""
     slots = [(g, b) for g, b in config.SLOTS if g == genre]
     if not slots:
@@ -60,37 +72,57 @@ def collect_genre(genre: str, balancer: Balancer, selected: dict[str, str]) -> l
         return []
     candidates = _load_source(genre)
     log.info("%s: %d raw candidates", genre, len(candidates))
+    if pools is not None:
+        pools[genre] = [
+            {
+                "source_url": c.source_url,
+                "content_hash": _sha(c.text),
+                "wordcount": len(c.text.split()),
+            }
+            for c in candidates
+        ]
     records: list[dict] = []
     used_ids: set[str] = set(selected)
     existing_trigrams: dict[str, set] = {
         rid: trigrams(txt) for rid, txt in selected.items()
     }
+    used_topics: set[str] = set()
     for _g, bucket in slots:
         filled = False
-        for cand in candidates:
-            fr = check_text(cand.text, genre)
-            if not fr.ok:
-                log.debug("reject %s: %s", cand.source_url, fr.reasons)
-                continue
-            if not in_bucket_target(fr.wordcount, bucket):
-                continue
-            dup_ok, dup_msgs = check_duplicate(cand.text, existing_trigrams)
-            for m in dup_msgs:
-                log.info("dedup: %s", m)
-            if not dup_ok:
-                continue
-            text_id = _next_text_id(genre, used_ids)
-            if balancer.try_assign(genre, bucket, text_id) is None:
-                continue
-            used_ids.add(text_id)
-            rec = _save(cand, text_id, bucket, fr.wordcount)
-            selected[text_id] = cand.text
-            existing_trigrams[text_id] = trigrams(cand.text)
-            records.append(rec)
-            filled = True
-            break
+        for prefer_new_topic in (True, False):
+            if filled:
+                break
+            for cand in candidates:
+                if prefer_new_topic and cand.topic and cand.topic in used_topics:
+                    continue
+                fr = check_text(cand.text, genre)
+                if not fr.ok:
+                    log.debug("reject %s: %s", cand.source_url, fr.reasons)
+                    continue
+                if not in_bucket_target(fr.wordcount, bucket):
+                    continue
+                dup_ok, dup_msgs = check_duplicate(cand.text, existing_trigrams)
+                for m in dup_msgs:
+                    log.info("dedup: %s", m)
+                if not dup_ok:
+                    continue
+                text_id = _next_text_id(genre, used_ids)
+                if balancer.try_assign(genre, bucket, text_id) is None:
+                    continue
+                used_ids.add(text_id)
+                if cand.topic:
+                    used_topics.add(cand.topic)
+                rec = _save(cand, text_id, bucket, fr.wordcount)
+                selected[text_id] = cand.text
+                existing_trigrams[text_id] = trigrams(cand.text)
+                records.append(rec)
+                filled = True
+                break
         if not filled:
-            log.warning("%s: no candidate for bucket ~%d", genre, bucket)
+            if balancer.free_slots(genre, bucket):
+                log.warning("%s: no candidate for bucket ~%d", genre, bucket)
+            else:
+                log.info("%s: bucket ~%d already filled (skipped)", genre, bucket)
     return records
 
 
@@ -112,6 +144,7 @@ def _save(cand: Candidate, text_id: str, bucket: int, wordcount: int) -> dict:
         "wordcount": wordcount,
         "target_bucket": f"~{bucket}",
         "language": "ru",
+        "topic": cand.topic,
         "notes": cand.notes,
     }
     (config.OUTPUT_DIR / f"{text_id}.meta.json").write_text(
@@ -121,12 +154,42 @@ def _save(cand: Candidate, text_id: str, bucket: int, wordcount: int) -> dict:
     return meta
 
 
-def run(genres: list[str]) -> list[dict]:
-    balancer = Balancer()
+def _preload() -> dict[str, str]:
     selected: dict[str, str] = {}
+    if config.OUTPUT_DIR.exists():
+        for txt_file in config.OUTPUT_DIR.glob("*.txt"):
+            selected[txt_file.stem] = txt_file.read_text(encoding="utf-8")
+    return selected
+
+
+def run(genres: list[str], fresh: bool = False) -> list[dict]:
+    balancer = Balancer()
+    if fresh:
+        selected: dict[str, str] = {}
+        if config.OUTPUT_DIR.exists():
+            existing = list(config.OUTPUT_DIR.glob("SMK-*"))
+            if existing:
+                stamp = date.today().isoformat() + "-" + time.strftime("%H%M%S")
+                archive = config.ARCHIVE_DIR / stamp
+                archive.mkdir(parents=True, exist_ok=True)
+                for f in existing:
+                    f.rename(archive / f.name)
+                log.info("archived %d prior files -> %s", len(existing), archive)
+    else:
+        selected = _preload()
+        for meta_file in config.OUTPUT_DIR.glob("*.meta.json") if config.OUTPUT_DIR.exists() else []:
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            bucket = int(meta["target_bucket"].lstrip("~"))
+            balancer.try_assign(meta["genre"], bucket, meta["text_id"])
     records: list[dict] = []
+    pools: dict[str, list[dict]] = {}
     for genre in genres:
-        records.extend(collect_genre(genre, balancer, selected))
+        try:
+            records.extend(collect_genre(genre, balancer, selected, pools))
+        except Exception as exc:  # noqa: BLE001
+            log.error("genre %s failed: %s", genre, exc)
+            pools.setdefault(genre, [])
+    write_manifest(pools, records)
     write_log_table(records)
     missing = balancer.missing()
     if missing:
@@ -136,16 +199,68 @@ def run(genres: list[str]) -> list[dict]:
     return records
 
 
+def write_manifest(pools: dict[str, list[dict]], records: list[dict]) -> None:
+    """Save the candidate-pool content-hash manifest and report drift vs the previous run."""
+    previous: dict = {}
+    if config.MANIFEST_PATH.exists():
+        try:
+            previous = json.loads(config.MANIFEST_PATH.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            previous = {}
+    manifest = {
+        "run_date": date.today().isoformat(),
+        "selected": sorted(r["text_id"] for r in records),
+        "pools": pools,
+    }
+    config.MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    config.MANIFEST_PATH.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    log.info("wrote candidate-pool manifest: %s", config.MANIFEST_PATH)
+    if previous.get("pools"):
+        drift = _diff_pools(previous["pools"], pools)
+        if drift:
+            for line in drift:
+                log.warning("DRIFT: %s", line)
+        else:
+            log.info("no candidate-pool drift vs previous run")
+
+
+def _diff_pools(old: dict, new: dict) -> list[str]:
+    """Compare candidate pools by source_url -> content_hash; report changes."""
+    out: list[str] = []
+    for genre in sorted(set(old) | set(new)):
+        o = {c["source_url"]: c["content_hash"] for c in old.get(genre, [])}
+        n = {c["source_url"]: c["content_hash"] for c in new.get(genre, [])}
+        added = set(n) - set(o)
+        removed = set(o) - set(n)
+        changed = {u for u in set(o) & set(n) if o[u] != n[u]}
+        if added:
+            out.append(f"{genre}: +{len(added)} new candidates")
+        if removed:
+            out.append(f"{genre}: -{len(removed)} candidates gone")
+        if changed:
+            out.append(f"{genre}: {len(changed)} candidates changed content")
+    return out
+
+
 LOG_TABLE_START = "<!-- smoke_collector:table:start -->"
 LOG_TABLE_END = "<!-- smoke_collector:table:end -->"
 
 
 def write_log_table(records: list[dict]) -> None:
+    all_records: dict[str, dict] = {}
+    if config.OUTPUT_DIR.exists():
+        for meta_file in config.OUTPUT_DIR.glob("*.meta.json"):
+            m = json.loads(meta_file.read_text(encoding="utf-8"))
+            all_records[m["text_id"]] = m
+    for r in records:
+        all_records[r["text_id"]] = r
     lines = [
         "| text_id | жанр | источник | wordcount | корзина | лицензия | PII | дубликаты | самодостаточность |",
         "|---|---|---|---|---|---|---|---|---|",
     ]
-    for r in sorted(records, key=lambda x: x["text_id"]):
+    for r in sorted(all_records.values(), key=lambda x: x["text_id"]):
         lines.append(
             f"| {r['text_id']} | {r['genre']} | {r['source_name']} | {r['wordcount']} "
             f"| {r['target_bucket']} | {r['license'][:40]} | ok | ok | ok |"
@@ -191,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
     if not genres:
         parser.print_help()
         return 1
-    records = run(genres)
+    records = run(genres, fresh=args.all)
     return 0 if len(records) == len(config.SLOTS) else 1
 
 

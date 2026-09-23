@@ -1,0 +1,23 @@
+# Pilot/main-scale procedural URLs (superset of the smoke list).
+# All cbr.ru FAQ topics + additional verified gov sources. Appended sources
+# do not affect smoke (smoke uses the default list + first-match).
+https://cbr.ru/faq/credit_h/
+https://cbr.ru/faq/information_security/blokirovka-kart/
+https://cbr.ru/faq/pnp/
+https://cbr.ru/faq/bank_s/
+https://cbr.ru/faq/insh/
+https://cbr.ru/faq/microfin/
+https://cbr.ru/faq/dkp/
+https://cbr.ru/faq/ndo/
+https://cbr.ru/faq/nps/
+https://cbr.ru/faq/rcb/
+https://cbr.ru/faq/fintekh/
+https://cbr.ru/faq/client/
+https://cbr.ru/faq/pens_k_inv/
+https://cbr.ru/faq/w_fin_sector/investicii-v-zoloto/
+https://cbr.ru/faq/foreign_exchange_market/
+https://cbr.ru/faq/finm_infrastructure/
+https://cbr.ru/faq/oper_br/
+https://cbr.ru/faq/ucbr/
+https://cbr.ru/faq/w_fin_sector/
+https://cbr.ru/faq/zhaloby-v-bank-rossii-/

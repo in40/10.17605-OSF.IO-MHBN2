@@ -1,0 +1,17 @@
+{
+  "text_id": "SMK-INS-01",
+  "genre": "ins",
+  "source_url": "https://cbr.ru/faq/dkp/",
+  "source_name": "Процедурная страница (gov)",
+  "author": "",
+  "title": "Регионы",
+  "date_accessed": "2026-09-22",
+  "date_published": "",
+  "license": "Public government reference material (free citation); access date recorded",
+  "license_proof": "https://cbr.ru/faq/dkp/",
+  "wordcount": 297,
+  "target_bucket": "~300",
+  "language": "ru",
+  "topic": "Регионы",
+  "notes": "procedural_pages scraper"
+}

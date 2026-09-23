@@ -16,12 +16,38 @@ from . import Candidate
 log = logging.getLogger(__name__)
 
 API = "https://ru.wikisource.org/w/api.php"
-WORKS = [
-    "На святках (Чехов)",
-    "Крыжовник (Чехов)",
-    "Ионыч (Чехов)",
-    "Студент (Чехов)",
-    "Душечка (Чехов)",
+
+# Smoke default (5 Chekhov works) — DO NOT reorder; keeps smoke first-match stable.
+SMOKE_WORKS = [
+    ("На святках (Чехов)", "А. П. Чехов"),
+    ("Крыжовник (Чехов)", "А. П. Чехов"),
+    ("Ионыч (Чехов)", "А. П. Чехов"),
+    ("Студент (Чехов)", "А. П. Чехов"),
+    ("Душечка (Чехов)", "А. П. Чехов"),
+]
+
+# Pilot/main scale-up: more PD Russian authors (appended, smoke default unchanged).
+EXTENDED_WORKS = SMOKE_WORKS + [
+    ("Каштанка (Чехов)", "А. П. Чехов"),
+    ("Тоска (Чехов)", "А. П. Чехов"),
+    ("Человек в футляре (Чехов)", "А. П. Чехов"),
+    ("Гусев (Чехов)", "А. П. Чехов"),
+    ("Палата №6 (Чехов)", "А. П. Чехов"),
+    ("Анна на шее (Чехов)", "А. П. Чехов"),
+    ("О любви (Чехов)", "А. П. Чехов"),
+    ("Хамелеон (Чехов)", "А. П. Чехов"),
+    ("Муму (Тургенев)", "И. С. Тургенев"),
+    ("Бирюк (Тургенев)", "И. С. Тургенев"),
+    ("Бежин луг (Тургенев)", "И. С. Тургенев"),
+    ("Кавказский пленник (Толстой)", "Л. Н. Толстой"),
+    ("После бала (Толстой)", "Л. Н. Толстой"),
+    ("Грешница (Толстой)", "Л. Н. Толстой"),
+    ("Лёля (Бунин)", "И. А. Бунин"),
+    ("Солнечный удар (Бунин)", "И. А. Бунин"),
+    ("Кавказ (Бунин)", "И. А. Бунин"),
+    ("Гамбринус (Куприн)", "А. И. Куприн"),
+    ("Куст сирени (Куприн)", "А. И. Куприн"),
+    ("Чудесный доктор (Куприн)", "А. И. Куприн"),
 ]
 
 TPL_RE = re.compile(r"\{\{[^{}]*\}\}", re.DOTALL)
@@ -77,10 +103,11 @@ def _scenes(text: str) -> list[str]:
     return passages
 
 
-def collect() -> list[Candidate]:
-    log.info("fiction: fetching %d PD works from Wikisource", len(WORKS))
+def collect(works: list | None = None) -> list[Candidate]:
+    work_list = works if works is not None else SMOKE_WORKS
+    log.info("fiction: fetching %d PD works from Wikisource", len(work_list))
     candidates: list[Candidate] = []
-    for work in WORKS:
+    for work, author in work_list:
         try:
             raw = _fetch_work(work)
         except Exception as exc:  # noqa: BLE001
@@ -100,7 +127,7 @@ def collect() -> list[Candidate]:
                         source_name="ru.wikisource.org",
                         genre="fic",
                         title=work,
-                        author="А. П. Чехов",
+                        author=author,
                         date_published="",
                         license=config.LICENSES["fic"],
                         license_proof="https://ru.wikisource.org/wiki/Справка:Авторское_право",

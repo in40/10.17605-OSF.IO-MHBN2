@@ -1,0 +1,17 @@
+{
+  "text_id": "PLT-NEWS-02",
+  "split": "pilot",
+  "genre": "news",
+  "source_url": "https://lenta.ru/news/1999/12/07/listovki/",
+  "source_name": "Lenta.ru (dump v1.1)",
+  "author": "",
+  "title": "Несмотря на ультиматум, жители Грозного не уходят",
+  "date_accessed": "2026-09-23",
+  "date_published": "1999/12/07",
+  "license": "CC BY-NC 4.0 (Lenta.Ru-News-Dataset v1.1); Lenta.ru RSS export: https://lenta.ru/info/posts/export/",
+  "license_proof": "https://lenta.ru/info/posts/export/",
+  "wordcount": 515,
+  "language": "ru",
+  "topic": "Россия",
+  "notes": "dump row id=None"
+}

@@ -1,0 +1,17 @@
+{
+  "text_id": "PLT-INS-02",
+  "split": "pilot",
+  "genre": "ins",
+  "source_url": "https://cbr.ru/faq/rcb/",
+  "source_name": "Процедурная страница (gov)",
+  "author": "",
+  "title": "Брокерские услуги",
+  "date_accessed": "2026-09-23",
+  "date_published": "",
+  "license": "Public government reference material (free citation); access date recorded",
+  "license_proof": "https://cbr.ru/faq/rcb/",
+  "wordcount": 424,
+  "language": "ru",
+  "topic": "Брокерские услуги",
+  "notes": "procedural_pages scraper"
+}

@@ -122,6 +122,18 @@ Model family names are provider labels. Exact provider endpoints, API versions, 
 
 **Total:** \(11 \text{ systems} \times 500 \text{ texts} \times 7 \text{ levels} = 38{,}500 \text{ summaries}\).
 
+#### Rationale for non-LLM systems
+
+The ensemble deliberately spans method classes — LLM (systems 1–7), hybrid extractive+abstractive (8–9), pure extractive (10), and an algorithmic extractive oracle — rather than consisting solely of LLMs. This is a design choice, not an omission:
+
+- **Method-class contrast.** The bottleneck claim concerns compression ratio \(r\), not model class. Including non-LLM systems lets the finding be attributed to compression rather than to idiosyncrasies of LLMs; an all-LLM ensemble could not separate the two.
+- **Faithfulness anchoring.** Extractive and extractive-grounded hybrid systems are inherently low-hallucination (content is drawn from the source). They serve as high-faithfulness anchors against which LLM faithfulness gaps are measured (cf. extractive-abstractive grounding, Cao et al. 2018, arXiv:1805.06266; LLM summarization hallucination, LongEval, arXiv:2301.13298).
+- **Lower and upper bounds.** Pure extractive (#10) is a non-abstractive lower bound; the oracle is an algorithmic extractive upper bound. Together they bracket the extractive performance envelope. The oracle is computational, **not** human-written; there is no human abstractive gold reference by design (see §9 and the human-summaries decision).
+- **Determinism and auditability.** Non-LLM systems are reproducible offline and inspectable, providing a control against LLM non-determinism and provider drift.
+- **Quality-per-compute contrast.** Small classical models run at a fraction of LLM cost; their scores contextualize what LLM scale actually buys.
+
+**Known limitations of the extractive components.** TextRank without a redundancy penalty (e.g. MMR) may select overlapping sentences at high \(r\); extractive selection can inherit lead/position bias (cf. arXiv:1909.13705). These are recorded as method limitations and are not corrected at the smoke stage.
+
 ---
 
 #### Base-model correlation
