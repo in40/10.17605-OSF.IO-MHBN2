@@ -44,10 +44,23 @@ DEFAULT_JUDGE: dict[str, Any] = {
     "texts_dir": "smoke/texts",
 }
 
+DEFAULT_ITEMGEN: dict[str, Any] = {
+    "base_url": "https://chat.sorokinonline.com/v1",
+    "api_key_env": "SC_KEY",
+    "model": "qwen3.5-122b",
+    "seed": 42,
+    "n_qa": 10,
+    "n_mcq": 8,
+    "n_nli": 6,
+    "n_stance": 4,
+    "items_dir": "smoke/items",
+}
+
 DEFAULTS: dict[str, Any] = {
     "collector": {"all": True},
     "summarizers": [dict(DEFAULT_SUMMARIZER)],
     "judge": dict(DEFAULT_JUDGE),
+    "itemgen": dict(DEFAULT_ITEMGEN),
 }
 
 
@@ -56,6 +69,7 @@ def load() -> dict[str, Any]:
         "collector": dict(DEFAULTS["collector"]),
         "summarizers": [dict(DEFAULT_SUMMARIZER)],
         "judge": dict(DEFAULT_JUDGE),
+        "itemgen": dict(DEFAULT_ITEMGEN),
     }
     if SETTINGS_PATH.exists():
         try:
@@ -69,6 +83,8 @@ def load() -> dict[str, Any]:
             settings["collector"].update(data["collector"])
         if "judge" in data:
             settings["judge"].update(data["judge"])
+        if "itemgen" in data:
+            settings["itemgen"].update(data["itemgen"])
         if isinstance(data.get("summarizers"), list) and data["summarizers"]:
             settings["summarizers"] = [
                 {**DEFAULT_SUMMARIZER, **s} for s in data["summarizers"]
@@ -145,3 +161,16 @@ def pilot_judge_args(s: dict[str, Any], summaries_dir: str, texts_dir: str) -> l
     s2["summaries_dir"] = str(summaries_dir)
     s2["texts_dir"] = str(texts_dir)
     return judge_args(s2)
+
+
+def itemgen_args(ig: dict[str, Any], texts_dir: str, items_dir: str) -> list[str]:
+    return [
+        "--texts-dir", str(texts_dir),
+        "--items-dir", str(items_dir),
+        "--model", str(ig.get("model", "qwen3.5-122b")),
+        "--seed", str(ig.get("seed", 42)),
+        "--n-qa", str(ig.get("n_qa", 10)),
+        "--n-mcq", str(ig.get("n_mcq", 8)),
+        "--n-nli", str(ig.get("n_nli", 6)),
+        "--n-stance", str(ig.get("n_stance", 4)),
+    ]

@@ -1,10 +1,12 @@
 import asyncio
 
-from textual.widgets import Static
+from textual.widgets import Select, Static
 
 from smoke_tui import settings as S
 from smoke_tui.app import (
+    ConfigScreen,
     HomeScreen,
+    ItemsViewerScreen,
     MainScreen,
     PilotScreen,
     PromptViewerScreen,
@@ -27,22 +29,109 @@ def test_summarize_screen_lists_summarizers(monkeypatch, tmp_path):
             app.push_screen(scr)
             await pilot.pause()
             assert isinstance(app.screen, SummarizeScreen)
-            n = len(app.settings["summarizers"])
-            assert n >= 1
+            assert len(app.settings["summarizers"]) >= 1
             assert scr.query_one("#summ_run0")
-            assert scr.query_one("#summ_refresh")
+            assert scr.query_one("#summ_stop0")
+            assert scr.query_one("#summ_log0")
 
     asyncio.run(drive())
 
 
-def test_summarize_done_status(tmp_path):
-    # summ_dir as an absolute path overrides REPO join in _is_done
+def test_summarize_screen_has_exploratory_oracle_row(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = SummarizeScreen("smoke/texts", "smoke/summaries")
+            app.push_screen(scr)
+            await pilot.pause()
+            assert scr.query_one("#summ_run_oracle")
+            assert scr.query_one("#summ_stop_oracle")
+            assert scr.query_one("#summ_log_oracle")
+            assert "EXPLORATORY" in str(scr.query_one("#summ_lbl_oracle", Static).render())
+
+    asyncio.run(drive())
+
+
+def test_summarize_expected_count(tmp_path):
     scr = SummarizeScreen("smoke/texts", str(tmp_path))
-    assert scr._is_done("nope") is False
-    d = tmp_path / "qwen-sys" / "SMK-NEWS-01" / "r0p5"
-    d.mkdir(parents=True)
-    (d / "summary_0.txt").write_text("x", encoding="utf-8")
-    assert scr._is_done("qwen-sys") is True
+    scr._n_texts = 10
+    s = {"levels": "0.9 0.5 0.2", "n": 2}
+    assert scr._expected(s) == 10 * 3 * 2
+
+
+def test_itemgen_args_uses_settings_model():
+    ig = {"model": "qwen3.8-flash-next", "seed": 7, "n_qa": 5, "n_mcq": 4,
+          "n_nli": 3, "n_stance": 2}
+    args = S.itemgen_args(ig, "smoke/texts", "smoke/items")
+    assert args[args.index("--model") + 1] == "qwen3.8-flash-next"
+    assert args[args.index("--seed") + 1] == "7"
+    assert args[args.index("--n-qa") + 1] == "5"
+
+
+def test_settings_has_itemgen_section():
+    s = S.load()
+    assert "itemgen" in s
+    assert "model" in s["itemgen"]
+
+
+def test_config_screen_has_itemgen_tab(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = ConfigScreen()
+            app.push_screen(scr)
+            await pilot.pause()
+            assert scr.query_one("#pane_itemgen")
+            assert scr.query_one("#itemgen_model")
+            assert scr.query_one("#itemgen_n_qa")
+
+    asyncio.run(drive())
+
+
+def test_items_viewer_mounts(monkeypatch, tmp_path):
+    import json
+
+    items_dir = tmp_path / "items"
+    items_dir.mkdir()
+    sample = {
+        "text_id": "T1",
+        "model": "qwen3.5-122b",
+        "items": {
+            "qa": [{"id": "qa01", "kind": "qa", "question": "Q1?", "gold_answer": "A1"}],
+            "mcq": [{"id": "mcq01", "kind": "mcq", "question": "M1?",
+                     "options": ["a", "b", "c", "d"], "correct_index": 2}],
+            "nli": [{"id": "nli01", "kind": "nli", "hypothesis": "H1", "label": "entailment"}],
+            "stance": [{"id": "st01", "kind": "stance", "claim": "C1", "stance": "support"}],
+        },
+    }
+    (items_dir / "T1.items.json").write_text(json.dumps(sample), encoding="utf-8")
+    (items_dir / "manifest.json").write_text(
+        json.dumps({"items": {"T1": {"combined": "abc123"}}}), encoding="utf-8"
+    )
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = ItemsViewerScreen(str(items_dir))
+            app.push_screen(scr)
+            await pilot.pause()
+            assert len(scr.files) == 1
+            scr.on_list_view_selected(_SelEv(0))
+            await pilot.pause()
+            detail = str(scr.query_one("#iv_detail", Static).render())
+            assert "Q1?" in detail
+            assert "A1" in detail
+            assert "abc123" in detail
+            assert "comprehension" in detail
+
+    asyncio.run(drive())
 
 
 def test_webtask_screen_mounts(monkeypatch, tmp_path):
@@ -59,6 +148,41 @@ def test_webtask_screen_mounts(monkeypatch, tmp_path):
             assert scr.query_one("#wt_export")
             assert scr.query_one("#wt_import")
             assert scr.query_one("#wt_sheet")
+
+    asyncio.run(drive())
+
+
+def test_webtask_screen_model_dropdown(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = WebTaskScreen()
+            app.push_screen(scr)
+            await pilot.pause()
+            sel = scr.query_one("#wt_system", Select)
+            assert sel is not None
+            assert sel.value == "alisa"  # defaults to first option
+
+    asyncio.run(drive())
+
+
+def test_webtask_screen_phase_aware(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+
+    async def drive():
+        app = SmokeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            scr = WebTaskScreen("PILOT", "pilot_data/texts", "pilot_data/summaries")
+            app.push_screen(scr)
+            await pilot.pause()
+            assert scr.phase == "PILOT"
+            assert scr.query_one("#wt_texts").value == "pilot_data/texts"
+            assert scr.query_one("#wt_out").value == "pilot_data/summaries"
+            assert "PILOT" in str(scr.query_one("#title", Static).render())
 
     asyncio.run(drive())
 
@@ -249,6 +373,17 @@ def _setup(monkeypatch, tmp_path):
     monkeypatch.setattr(pcfg, "PILOT_TEXTS", texts_dir)
     monkeypatch.setattr(R, "RATINGS_PATH", tmp_path / "ratings.json")
     return R
+
+
+class _SelEv:
+    """Minimal stand-in for a ListView.Selected event."""
+
+    def __init__(self, index):
+        class _LV:
+            pass
+
+        self.list_view = _LV()
+        self.list_view.index = index
 
 
 def test_pilot_screen_mounts(monkeypatch, tmp_path):

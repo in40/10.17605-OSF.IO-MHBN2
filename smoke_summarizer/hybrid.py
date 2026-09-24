@@ -43,6 +43,7 @@ class HybridSummarizer:
         no_repeat_ngram_size: int = 4,
         max_input_tokens: int = 600,
         max_new_tokens: int = 256,
+        offline: bool = True,
     ) -> None:
         self.model_name = model_name
         self.backend = backend
@@ -51,6 +52,7 @@ class HybridSummarizer:
         self.no_repeat_ngram_size = no_repeat_ngram_size
         self.max_input_tokens = max_input_tokens
         self.max_new_tokens = max_new_tokens
+        self.offline = offline
         self._loaded = False
 
     def _load(self) -> None:
@@ -63,6 +65,18 @@ class HybridSummarizer:
         self._loaded = True
 
     def _load_transformers(self) -> None:
+        import os
+        import time
+
+        # The model is expected to be pre-cached. Force offline so the load
+        # never blocks on HuggingFace network checks (a socket wait burns no
+        # CPU and looks like a hang). Pass offline=False only for the initial
+        # one-time download.
+        if self.offline:
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        log.info("loading hybrid model %s (offline=%s)...", self.model_name, self.offline)
+        t0 = time.time()
         import torch
         from transformers import AutoTokenizer, T5ForConditionalGeneration
 
@@ -71,6 +85,7 @@ class HybridSummarizer:
         self.model.to(self.device)
         self.model.eval()
         self._torch = torch
+        log.info("hybrid model loaded in %.1fs", time.time() - t0)
 
     def _load_ct2(self) -> None:
         import ctranslate2

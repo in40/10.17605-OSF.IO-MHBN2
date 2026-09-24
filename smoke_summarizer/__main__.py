@@ -24,7 +24,7 @@ def setup_logging(logfile: str | None = None) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="smoke_summarizer")
     p.add_argument("--config", help="JSON config file (defaults, overridden by CLI)")
-    p.add_argument("--type", choices=["llm", "extractive", "hybrid"], default=None)
+    p.add_argument("--type", choices=["llm", "extractive", "hybrid", "oracle"], default=None)
     p.add_argument("--base-url", default=None)
     p.add_argument("--api-key", default=None, help="API key literal")
     p.add_argument("--api-key-env", default="SC_KEY", help="env var holding the key")
@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--hybrid-backend", choices=["transformers", "ctranslate2"], default=None)
     p.add_argument("--hybrid-model", default=None, help="RU seq2seq model for hybrid (default rut5_base_sum_gazeta)")
     p.add_argument("--extractive-scale", type=float, default=None, help="hybrid grounding subset = target * scale")
+    p.add_argument("--hybrid-online", action="store_true", help="allow HuggingFace network for hybrid (one-time model download); default is offline")
+    p.add_argument("--force", action="store_true", help="regenerate even if summary files already exist (default: resume/skip)")
     p.add_argument("--texts-dir", default=None)
     p.add_argument("--out-dir", default=None)
     p.add_argument("--prompt-base", default=None, help="path to base prompt template file")
@@ -92,6 +94,10 @@ def main(argv: list[str] | None = None) -> int:
         cfg.hybrid_backend = args.hybrid_backend
     if args.hybrid_model:
         cfg.hybrid_model = args.hybrid_model
+    if args.hybrid_online:
+        cfg.hybrid_offline = False
+    if args.force:
+        cfg.force = True
     if args.extractive_scale is not None:
         cfg.extractive_scale = args.extractive_scale
     if args.texts_dir:
@@ -106,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
         ctk = cfg.extra.setdefault("chat_template_kwargs", {})
         ctk["enable_thinking"] = False
 
-    if not cfg.api_key and cfg.type not in ("extractive", "hybrid"):
+    if not cfg.api_key and cfg.type not in ("extractive", "hybrid", "oracle"):
         print(f"ERROR: no API key (set --api-key or env {args.api_key_env})", file=sys.stderr)
         return 2
 

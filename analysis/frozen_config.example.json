@@ -1,0 +1,71 @@
+{
+  "_comment": "FROZEN pilot configuration for the threshold-model fitting. Values in here are DECIDED + FROZEN in the pilot (basis, knots, delta_d, lineup) and consumed by the main-phase fit. Do not edit after freeze without a registered amendment.",
+
+  "spline": {
+    "type": "ispline",
+    "degree": 1,
+    "knots": [0.2, 0.5, 0.8],
+    "_note": "I-spline (integrated spline) basis; monotone by construction with non-negative coefficients. Knots chosen in pilot via LOO/WAIC comparison (see select_knots.R)."
+  },
+
+  "delta_d": {
+    "facts": 0.8,
+    "logic": 0.7,
+    "stance": 0.7,
+    "comprehension": 0.75,
+    "_note": "Per-dimension pass thresholds, CALIBRATED in the pilot. pass = (Q_d >= delta_d)."
+  },
+
+  "dimension_method": {
+    "facts": "qa",
+    "logic": "nli",
+    "stance": "stance",
+    "comprehension": "mcq",
+    "_note": "Which item method feeds each core dimension (from .qa.json scores)."
+  },
+
+  "lineup": {
+    "sources": [
+      {"system": "qwen3.5-122b", "base_model": "qwen", "role": "summarizer"},
+      {"system": "nemotron-3-super", "base_model": "nemotron", "role": "summarizer"},
+      {"system": "gpt-oss-120b", "base_model": "gpt-oss", "role": "summarizer"},
+      {"system": "qwen3.8-27b", "base_model": "qwen", "role": "summarizer"},
+      {"system": "qwen3.6-35b", "base_model": "qwen", "role": "summarizer"},
+      {"system": "gemma-4-31b", "base_model": "gemma", "role": "summarizer"},
+      {"system": "deepseek-4.1", "base_model": "deepseek", "role": "summarizer"},
+      {"system": "TextRerank", "base_model": "extractive", "role": "summarizer"},
+      {"system": "Hybrid", "base_model": "rut5", "role": "summarizer"},
+      {"system": "alisa", "base_model": "alisa", "role": "summarizer"},
+      {"system": "gigachat", "base_model": "gigachat", "role": "summarizer"},
+      {"system": "oracle", "base_model": "oracle", "role": "oracle"}
+    ],
+    "_note": "role=oracle is EXCLUDED from all primary estimators (02_math.md). Adjust to the final frozen lineup."
+  },
+
+  "model": {
+    "family": "binomial",
+    "link": "logit",
+    "random_effects": ["text_id", "source", "base_model"],
+    "coefficient_constraint": "non_negative",
+    "priors": {
+      "basis_coef": "exponential(1)",
+      "sd": "cauchy(0, 1)"
+    },
+    "chains": 4,
+    "iter": 4000,
+    "warmup": 1000,
+    "adapt_delta": 0.95
+  },
+
+  "convergence": {
+    "rhat_max": 1.01,
+    "ess_min": 400,
+    "max_divergent": 0
+  },
+
+  "r_grid": [0.9, 0.7, 0.5, 0.3, 0.2, 0.1, 0.05],
+  "r_star_target_prob": 0.5,
+
+  "frozen_at": null,
+  "config_hash": null
+}

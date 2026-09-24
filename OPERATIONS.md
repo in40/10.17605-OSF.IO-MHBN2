@@ -191,19 +191,27 @@ pilot_data/                  <- Phase 3 (Home -> MAIN)
 Two real-world limits shape the summarization step:
 
 ### 1. The endpoint serves one model at a time
-Summarization runs as **sequential single-model passes**, not all at once.
-- In the TUI, **Summarize** opens a per-model screen: each configured
-  summarizer is a row with a **✓ done / — pending** status and a **Run** button.
-- **Switch the endpoint to that model first**, then hit Run. The pass writes
-  only that system's summaries.
-- Passes are **resumable** — already-generated summaries are skipped, so a
-  crash or a mid-lineup switch just resumes.
-- Hit **Refresh status** after a pass to update the checklist.
+Summarization runs as **sequential single-model passes**, each as a
+**detached background job**.
+- In the TUI, **Summarize** opens a live dashboard: each configured
+  summarizer is a row with a status (`● running X/Y`, `✓ done`,
+  `■ stopped`, `— pending`) and **Run / Stop / Log** buttons.
+- **Switch the endpoint to that model first**, then hit **Run**. The pass
+  launches **detached** — it keeps running even if you close the TUI.
+- **Return any time**: status is read from the filesystem (pidfile +
+  output-dir file count), so reopening the TUI shows the job still running
+  with live progress. **Log** tails the job's captured output.
+- **Stop** terminates the running job cleanly (via its pidfile).
+- Passes are **resumable** — already-generated `summary_*.txt` are skipped,
+  so a stop/crash just resumes. Use `--force` (CLI) to regenerate.
+- One job per system at a time: starting a second is refused while one runs.
 
 ### 2. Alisa / GigaChat have no API (web-UI only)
-These run through a **manual export → human → import** loop
-(Home → **Web-UI models**):
-1. **Export** a task sheet (`<system>_tasks.md`). Each task is a
+These run through a **manual export → human → import** loop, available in
+**every phase** (Smoke / Pilot / Main) from the **Summarize** step →
+**Web-UI models**. The screen is phase-aware: it exports from that phase's
+texts dir and imports into that phase's summaries dir.
+1. **Export** a task sheet (`<summaries>/<system>_tasks.md`). Each task is a
    **self-contained** prompt (instruction + target_words + full source text)
    between `---PROMPT---` / `---ENDPROMPT---`, with an empty
    `---RESPONSE---` block.

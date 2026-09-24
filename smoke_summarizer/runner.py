@@ -34,6 +34,8 @@ class SummConfig:
     regen_attempts: int = 1
     hybrid_backend: str = "transformers"
     hybrid_model: str = "IlyaGusev/rut5_base_sum_gazeta"
+    hybrid_offline: bool = True
+    force: bool = False
     extractive_scale: float = 2.0
     texts_dir: str = "smoke/texts"
     out_dir: str = "smoke/summaries"
@@ -86,15 +88,35 @@ def _level_tag(r: float) -> str:
 
 def generate_one(
     client: LLMClient | None, cfg: SummConfig, text: str, target: int
-) -> tuple[str, int, int, str]:
-    """Return (summary, attempts, regen_used, status)."""
+) -> tuple[str, int, int, str, dict]:
+    """Return (summary, attempts, regen_used, status, extra).
+
+    `extra` carries type-specific diagnostics (e.g. oracle coverage/coherence/
+    maximin); empty dict for other types.
+    """
     if cfg.type == "extractive":
         from .extractive import summarize_extractive
 
         summary = summarize_extractive(text, target, cfg.tolerance)
         wc = word_count(summary)
         status = "ok" if length_ok(wc, target, cfg.tolerance) else "length_fail"
-        return summary, 1, 0, status
+        return summary, 1, 0, status, {}
+
+    if cfg.type == "oracle":
+        from .extractive import split_sentences
+        from .oracle import oracle_select
+
+        sel = oracle_select(text, target, cfg.tolerance)
+        sentences = split_sentences(text)
+        summary = " ".join(sentences[i] for i in sel["indices"])
+        wc = word_count(summary)
+        status = "ok" if length_ok(wc, target, cfg.tolerance) else "length_fail"
+        extra = {
+            "coverage": sel["coverage"],
+            "coherence": sel["coherence"],
+            "maximin": sel["maximin"],
+        }
+        return summary, 1, 0, status, extra
 
     if cfg.type == "hybrid":
         from .hybrid import HybridSummarizer
@@ -104,11 +126,12 @@ def generate_one(
                 model_name=cfg.hybrid_model,
                 backend=getattr(cfg, "hybrid_backend", "transformers"),
                 extractive_scale=getattr(cfg, "extractive_scale", 2.0),
+                offline=getattr(cfg, "hybrid_offline", True),
             )
         summary = cfg._hybrid.summarize(text, target, cfg.tolerance)
         wc = word_count(summary)
         status = "ok" if length_ok(wc, target, cfg.tolerance) else "length_fail"
-        return summary, 1, 0, status
+        return summary, 1, 0, status, {}
 
     prompt = render_base(cfg.prompt_base, target, text)
     attempts = 0
@@ -130,31 +153,39 @@ def generate_one(
         last_content = content
         wc = word_count(content)
         if length_ok(wc, target, cfg.tolerance):
-            return content, attempts, regen_used, "ok"
+            return content, attempts, regen_used, "ok", {}
         if attempt < cfg.regen_attempts:
             regen_used += 1
             lo = int(target * (1 - cfg.tolerance))
             hi = int(target * (1 + cfg.tolerance))
             prompt = render_regen(cfg.prompt_regen, max(1, lo), hi, text)
             log.info("length miss (wc=%d target=%d) -> regen", wc, target)
-    return last_content, attempts, regen_used, "length_fail"
+    return last_content, attempts, regen_used, "length_fail", {}
 
 
 def run(cfg: SummConfig, texts: dict[str, str]) -> list[dict]:
     client = (
         None
-        if cfg.type in ("extractive", "hybrid")
+        if cfg.type in ("extractive", "hybrid", "oracle")
         else LLMClient(cfg.base_url, cfg.api_key, cfg.model)
     )
     out_root = Path(cfg.out_dir) / cfg.system_label
     records: list[dict] = []
+    skipped = 0
     for text_id, text in sorted(texts.items()):
         src_wc = word_count(text)
         for r in cfg.levels:
             tgt = target_words(src_wc, r)
             for i in range(cfg.n_summaries):
+                d = out_root / text_id / _level_tag(r)
+                summary_file = d / f"summary_{i}.txt"
+                if summary_file.exists() and not cfg.force:
+                    skipped += 1
+                    continue
                 log.info("%s r=%.2f target=%d summary#%d", text_id, r, tgt, i)
-                summary, attempts, regen_used, status = generate_one(client, cfg, text, tgt)
+                summary, attempts, regen_used, status, extra = generate_one(
+                    client, cfg, text, tgt
+                )
                 rec = {
                     "text_id": text_id,
                     "system": cfg.system_label,
@@ -173,13 +204,16 @@ def run(cfg: SummConfig, texts: dict[str, str]) -> list[dict]:
                     "generated_at": datetime.now(timezone.utc).isoformat(),
                     "content_hash": _hash(cfg.model, cfg.prompt_base, text, summary),
                 }
-                d = out_root / text_id / _level_tag(r)
+                if extra:
+                    rec["oracle"] = extra
                 d.mkdir(parents=True, exist_ok=True)
-                (d / f"summary_{i}.txt").write_text(summary, encoding="utf-8")
+                summary_file.write_text(summary, encoding="utf-8")
                 (d / f"summary_{i}.json").write_text(
                     json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
                 records.append(rec)
+    if skipped:
+        log.info("resumed: skipped %d already-generated summaries (use --force to redo)", skipped)
     return records
 
 

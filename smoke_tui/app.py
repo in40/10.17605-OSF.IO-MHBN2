@@ -77,6 +77,24 @@ JUDGE_FIELDS = [
     ("texts_dir", "Texts dir", "text"),
 ]
 
+ITEMGEN_FIELDS = [
+    ("base_url", "Base URL", "text"),
+    ("api_key_env", "API key env var", "text"),
+    ("model", "Item-generator model", "text"),
+    ("seed", "Seed", "int"),
+    ("n_qa", "QA items per text", "int"),
+    ("n_mcq", "MCQ items per text", "int"),
+    ("n_nli", "NLI items per text", "int"),
+    ("n_stance", "Stance items per text", "int"),
+    ("items_dir", "Items dir", "text"),
+]
+
+# Web-UI-only summarization models (no API). (display, system_label)
+WEB_UI_MODELS = [
+    ("Alisa (Yandex)", "alisa"),
+    ("GigaChat (Sber)", "gigachat"),
+]
+
 
 class HomeScreen(Screen):
     def compose(self) -> ComposeResult:
@@ -139,6 +157,9 @@ class ConfigScreen(Screen):
             with TabPane("Judge", id="pane_judge"):
                 with VerticalScroll():
                     yield from self._fields("judge", self.app.settings["judge"], JUDGE_FIELDS)
+            with TabPane("Item generator", id="pane_itemgen"):
+                with VerticalScroll():
+                    yield from self._fields("itemgen", self.app.settings["itemgen"], ITEMGEN_FIELDS)
         with Horizontal(id="cfg-actions"):
             yield Button("+ Add Summarizer", id="add_summ")
             yield Button("Remove current", id="remove_current")
@@ -163,6 +184,7 @@ class ConfigScreen(Screen):
             except Exception:  # noqa: BLE001
                 pass
         self._read_into(self.app.settings["judge"], "judge", JUDGE_FIELDS)
+        self._read_into(self.app.settings["itemgen"], "itemgen", ITEMGEN_FIELDS)
 
     def on_mount(self) -> None:
         for i, summ in enumerate(self.summarizers):
@@ -377,12 +399,21 @@ class ResultsScreen(Screen):
         sf = self.entries[idx]
         source = self._source_for(sf)
         summary = sf.read_text(encoding="utf-8")
+        recf = sf.with_suffix(".json")
+        rec = json.loads(recf.read_text(encoding="utf-8")) if recf.exists() else {}
         jf = sf.with_suffix(".judge.json")
         judge = json.loads(jf.read_text(encoding="utf-8")) if jf.exists() else None
         qaf = sf.with_name(sf.stem + ".qa.json")
         qa = json.loads(qaf.read_text(encoding="utf-8")) if qaf.exists() else None
         detail = self.query_one("#res-detail-text", Static)
         parts = [f"[b]SOURCE[/b]\n{source}\n\n[b]SUMMARY[/b]\n{summary}"]
+        if rec.get("oracle"):
+            o = rec["oracle"]
+            parts.append(
+                "[b]ORACLE (internal, lexical)[/b]\n"
+                f"  coverage: {o.get('coverage')}  coherence: {o.get('coherence')}  "
+                f"maximin: {o.get('maximin')}"
+            )
         if judge and judge.get("scores"):
             sc = judge["scores"]
             parts.append(f"[b]JUDGE[/b] ({judge.get('judge_model','')})\n" + "\n".join(
@@ -446,9 +477,11 @@ class SmokeScreen(Screen):
             yield Static("3. Generate items (from texts)", classes="step-h")
             with Horizontal(id="s-step3"):
                 yield Button("Generate QA/MCQ/NLI/stance", id="s_items", variant="primary")
+                yield Button("View items", id="s_viewitems")
             yield Static("4. Summarize (r-grid)", classes="step-h")
             with Horizontal(id="s-step4"):
-                yield Button("Summarize smoke texts", id="s_summ", variant="primary")
+                yield Button("Summarize smoke texts (API)", id="s_summ", variant="primary")
+                yield Button("Web-UI models (Alisa/GigaChat)", id="s_webui", variant="warning")
             yield Static("5. Score summaries", classes="step-h")
             with Horizontal(id="s-step5"):
                 yield Button("Judge (rubric)", id="s_judge", variant="primary")
@@ -474,10 +507,16 @@ class SmokeScreen(Screen):
             )
         elif bid == "s_items":
             cmd = [PY, "-m", "itemgen", "generate",
-                   "--texts-dir", self.TEXTS, "--items-dir", self.ITEMS]
+                   *S.itemgen_args(self.app.settings["itemgen"], self.TEXTS, self.ITEMS)]
             self.app.push_screen(RunScreen("Generate items", [("generate items", cmd)]))
+        elif bid == "s_viewitems":
+            self.app.push_screen(ItemsViewerScreen(self.ITEMS))
         elif bid == "s_summ":
             self.app.push_screen(SummarizeScreen(self.TEXTS, self.SUMM))
+        elif bid == "s_webui":
+            self.app.push_screen(
+                WebTaskScreen("SMOKE", self.TEXTS, self.SUMM)
+            )
         elif bid == "s_judge":
             args = S.judge_args(self.app.settings["judge"])
             self.app.push_screen(
@@ -545,11 +584,13 @@ class CorpusScreen(Screen):
             yield Static("3. Generate items (from texts)", classes="step-h")
             with Horizontal(id="p-step3"):
                 yield Button("Generate QA/MCQ/NLI/stance", id="p_items", variant="primary")
+                yield Button("View items", id="p_viewitems")
             yield Static("4. Summarize (r-grid)", classes="step-h")
             with Horizontal(id="p-step4"):
                 yield Button(
-                    f"Summarize {self.phase.lower()} texts", id="p_summ", variant="primary"
+                    f"Summarize {self.phase.lower()} texts (API)", id="p_summ", variant="primary"
                 )
+                yield Button("Web-UI models (Alisa/GigaChat)", id="p_webui", variant="warning")
             yield Static("5. Score summaries", classes="step-h")
             with Horizontal(id="p-step5"):
                 yield Button(
@@ -632,13 +673,19 @@ class CorpusScreen(Screen):
             self.app.push_screen(RaterScreen(rater, split=self.split))
         elif bid == "p_items":
             cmd = [PY, "-m", "itemgen", "generate",
-                   "--texts-dir", self.texts_dir, "--items-dir", self.items_dir]
+                   *S.itemgen_args(self.app.settings["itemgen"], self.texts_dir, self.items_dir)]
             self.app.push_screen(
                 RunScreen(f"Generate {self.phase.lower()} items",
                          [("generate items", cmd)])
             )
+        elif bid == "p_viewitems":
+            self.app.push_screen(ItemsViewerScreen(self.items_dir))
         elif bid == "p_summ":
             self.app.push_screen(SummarizeScreen(self.texts_dir, self.summ_dir))
+        elif bid == "p_webui":
+            self.app.push_screen(
+                WebTaskScreen(self.phase, self.texts_dir, self.summ_dir)
+            )
         elif bid == "p_judge":
             cmd = [PY, "-m", "smoke_judge",
                    *S.pilot_judge_args(
@@ -887,88 +934,249 @@ class PromptViewerScreen(Screen):
 
 
 class SummarizeScreen(Screen):
-    """Run summarizers ONE model at a time (endpoint serves one model at a time).
+    """Live dashboard for background summarization passes.
 
-    Shows each configured summarizer with a done/pending status; each Run
-    launches a single-model pass. Switch the endpoint model before each pass.
+    Each pass runs as a detached job (survives the TUI). Status is polled
+    from the filesystem, so you can close and reopen and still see progress.
+    Only one endpoint model is active at a time — switch the endpoint before
+    starting each pass. Passes are resumable (existing summaries skipped).
     """
 
     def __init__(self, texts_dir: str, summ_dir: str) -> None:
         super().__init__()
         self.texts_dir = texts_dir
         self.summ_dir = summ_dir
+        self._n_texts = 0
+        self._timer = None
 
     def compose(self) -> ComposeResult:
-        yield Static("SUMMARIZE — one model per pass", id="title", classes="big")
+        yield Static("SUMMARIZE — background passes", id="title", classes="big")
         yield Static(
-            "Only one model is active on the endpoint at a time. Switch the "
-            "endpoint to the model, then Run that pass. Passes are resumable — "
-            "already-generated summaries are skipped.",
+            "Each pass runs as a detached background job — it keeps going even "
+            "if you close the TUI, and you can return here for live progress. "
+            "Switch the endpoint to the model before starting each pass. "
+            "Passes are resumable (existing summaries are skipped).",
             id="p_purpose",
         )
         with VerticalScroll(id="summ-list"):
             for i, s in enumerate(self.app.settings["summarizers"]):
-                with Horizontal(id=f"summ-row{i}"):
-                    yield Static(self._row_label(s), id=f"summ_lbl{i}")
-                    yield Button("Run", id=f"summ_run{i}", variant="primary")
+                with Vertical(id=f"summ-row{i}"):
+                    yield Static("", id=f"summ_lbl{i}")
+                    with Horizontal(id=f"summ_btns{i}"):
+                        yield Button("Run", id=f"summ_run{i}", variant="primary")
+                        yield Button("Stop", id=f"summ_stop{i}", variant="error")
+                        yield Button("Log", id=f"summ_log{i}")
+            with Vertical(id="summ-row-oracle"):
+                yield Static("", id="summ_lbl_oracle")
+                with Horizontal(id="summ_btns_oracle"):
+                    yield Button("Run", id="summ_run_oracle", variant="warning")
+                    yield Button("Stop", id="summ_stop_oracle", variant="error")
+                    yield Button("Log", id="summ_log_oracle")
         with Horizontal(id="summ-foot"):
-            yield Button("Refresh status", id="summ_refresh")
             yield Button("Back", id="summ_back")
 
-    def _is_done(self, system: str) -> bool:
-        d = REPO / self.summ_dir / str(system)
-        return d.exists() and any(d.rglob("summary_*.txt"))
+    def on_mount(self) -> None:
+        from smoke_summarizer.runner import load_texts
 
-    def _row_label(self, s: dict) -> str:
-        stype = s.get("type", "llm")
-        sysname = s.get("system", "?")
-        model = s.get("model", "")
-        mark = "[green]✓ done[/green]" if self._is_done(sysname) else "[dim]— pending[/dim]"
-        return f"[b][{stype}][/b] {sysname} · {model}   {mark}"
+        self._n_texts = len(load_texts(self.texts_dir))
+        self._refresh()
+        self._timer = self.set_interval(2.0, self._refresh)
 
-    def _refresh_status(self, *_args) -> None:
+    def on_unmount(self) -> None:
+        if self._timer:
+            self._timer.stop()
+
+    def _expected(self, s: dict) -> int:
+        levels = [x for x in str(s.get("levels", "")).split() if x]
+        try:
+            n = int(s.get("n", 1) or 1)
+        except (TypeError, ValueError):
+            n = 1
+        return max(1, self._n_texts * len(levels) * n)
+
+    ORACLE_SYSTEM = "oracle"
+
+    def _oracle_summ(self) -> dict:
+        summ = self.app.settings.get("summarizers", [])
+        levels = (
+            summ[0].get("levels", "0.9 0.7 0.5 0.3 0.2 0.1 0.05")
+            if summ
+            else "0.9 0.7 0.5 0.3 0.2 0.1 0.05"
+        )
+        return {
+            "type": "oracle",
+            "system": self.ORACLE_SYSTEM,
+            "levels": levels,
+            "n": 1,
+            "tolerance": 0.2,
+            "regen": 1,
+            "model": "extractive-maximin",
+        }
+
+    def _refresh(self, *_args) -> None:
+        from . import jobs
+
         for i, s in enumerate(self.app.settings["summarizers"]):
-            self.query_one(f"#summ_lbl{i}", Static).update(self._row_label(s))
+            system = s.get("system", "?")
+            running = jobs.is_running(self.summ_dir, system)
+            done, exp = jobs.progress(self.summ_dir, system, self._expected(s))
+            if running:
+                mark = f"[green]● running[/green] {done}/{exp}"
+            elif exp and done >= exp:
+                mark = f"[green]✓ done[/green] {done}/{exp}"
+            elif done:
+                mark = f"[yellow]■ stopped[/yellow] {done}/{exp}"
+            else:
+                mark = "[dim]— pending[/dim]"
+            self.query_one(f"#summ_lbl{i}", Static).update(
+                f"[b][{s.get('type','llm')}][/b] {system} · {s.get('model','')}  {mark}"
+            )
+            self.query_one(f"#summ_run{i}", Button).disabled = running
+            self.query_one(f"#summ_stop{i}", Button).disabled = not running
+            self.query_one(f"#summ_log{i}", Button).disabled = not (running or done)
+
+        # Exploratory oracle row
+        osys = self.ORACLE_SYSTEM
+        orun = jobs.is_running(self.summ_dir, osys)
+        odone, oexp = jobs.progress(self.summ_dir, osys, self._expected(self._oracle_summ()))
+        if orun:
+            omark = f"[green]● running[/green] {odone}/{oexp}"
+        elif oexp and odone >= oexp:
+            omark = f"[green]✓ done[/green] {odone}/{oexp}"
+        elif odone:
+            omark = f"[yellow]■ stopped[/yellow] {odone}/{oexp}"
+        else:
+            omark = "[dim]— pending[/dim]"
+        self.query_one("#summ_lbl_oracle", Static).update(
+            f"[b][oracle][/b] ORACLE — EXPLORATORY (excluded from primary)  {omark}"
+        )
+        self.query_one("#summ_run_oracle", Button).disabled = orun
+        self.query_one("#summ_stop_oracle", Button).disabled = not orun
+        self.query_one("#summ_log_oracle", Button).disabled = not (orun or odone)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        from . import jobs
+
         bid = event.button.id or ""
         if bid == "summ_back":
             self.app.pop_screen()
-        elif bid == "summ_refresh":
-            self._refresh_status()
+        elif bid == "summ_run_oracle":
+            cmd = [PY, "-m", "smoke_summarizer",
+                   *S.pilot_summarizer_args(self._oracle_summ(), self.texts_dir, self.summ_dir)]
+            try:
+                jobs.start(self.summ_dir, self.ORACLE_SYSTEM, cmd)
+                self.notify("Started exploratory oracle pass")
+            except RuntimeError as exc:
+                self.notify(str(exc), severity="warning")
+            self._refresh()
+        elif bid == "summ_stop_oracle":
+            jobs.stop(self.summ_dir, self.ORACLE_SYSTEM)
+            self.notify("Stopped oracle pass")
+            self._refresh()
+        elif bid == "summ_log_oracle":
+            self.app.push_screen(JobLogScreen(self.summ_dir, self.ORACLE_SYSTEM))
         elif bid.startswith("summ_run"):
             i = int(bid[len("summ_run"):])
             s = self.app.settings["summarizers"][i]
+            system = s.get("system", "?")
             cmd = [PY, "-m", "smoke_summarizer",
                    *S.pilot_summarizer_args(s, self.texts_dir, self.summ_dir)]
-            self.app.push_screen(
-                RunScreen(
-                    f"Summarize · {s.get('system','?')}",
-                    [(f"{s.get('system','?')} · {s.get('model','')}", cmd)],
-                ),
-                callback=self._refresh_status,
-            )
+            try:
+                jobs.start(self.summ_dir, system, cmd)
+                self.notify(f"Started background pass: {system}")
+            except RuntimeError as exc:
+                self.notify(str(exc), severity="warning")
+            self._refresh()
+        elif bid.startswith("summ_stop"):
+            i = int(bid[len("summ_stop"):])
+            s = self.app.settings["summarizers"][i]
+            jobs.stop(self.summ_dir, s.get("system", "?"))
+            self.notify("Stopped pass")
+            self._refresh()
+        elif bid.startswith("summ_log"):
+            i = int(bid[len("summ_log"):])
+            s = self.app.settings["summarizers"][i]
+            self.app.push_screen(JobLogScreen(self.summ_dir, s.get("system", "?")))
+
+
+class JobLogScreen(Screen):
+    """Tail a background job's log file (auto-refreshes)."""
+
+    def __init__(self, summ_dir: str, system: str) -> None:
+        super().__init__()
+        self.summ_dir = summ_dir
+        self.system = system
+        self._timer = None
+
+    def compose(self) -> ComposeResult:
+        yield Static(f"JOB LOG — {self.system}", id="title", classes="big")
+        yield RichLog(id="joblog", markup=True)
+        with Horizontal(id="summ-foot"):
+            yield Button("Refresh", id="jl_refresh")
+            yield Button("Back", id="jl_back")
+
+    def on_mount(self) -> None:
+        self._show()
+        self._timer = self.set_interval(2.0, self._show)
+
+    def on_unmount(self) -> None:
+        if self._timer:
+            self._timer.stop()
+
+    def _show(self, *_args) -> None:
+        from . import jobs
+
+        log = self.query_one("#joblog", RichLog)
+        running = jobs.is_running(self.summ_dir, self.system)
+        status = "[green]● running[/green]" if running else "[dim]■ not running[/dim]"
+        text = jobs.tail(self.summ_dir, self.system, 200)
+        log.clear()
+        log.write(status)
+        log.write(text or "(no log yet)")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "jl_back":
+            self.app.pop_screen()
+        elif event.button.id == "jl_refresh":
+            self._show()
 
 
 class WebTaskScreen(Screen):
-    """Export/import task sheets for web-UI-only models (Alisa, GigaChat)."""
+    """Export/import task sheets for web-UI-only models (Alisa, GigaChat).
+
+    Phase-aware: launched from a phase with that phase's texts_dir + summ_dir,
+    so pilot/main/smoke each export/import against the correct corpus.
+    """
+
+    def __init__(
+        self,
+        phase: str = "SMOKE",
+        texts_dir: str = "smoke/texts",
+        summ_dir: str = "smoke/summaries",
+    ) -> None:
+        super().__init__()
+        self.phase = phase
+        self.texts_dir = texts_dir
+        self.summ_dir = summ_dir
 
     def compose(self) -> ComposeResult:
-        yield Static("WEB-UI MODELS", id="title", classes="big")
+        yield Static(f"WEB-UI MODELS — {self.phase}", id="title", classes="big")
         yield Static(
-            "For models with no API (Alisa / GigaChat): export a self-contained "
-            "task sheet, run each prompt in the web UI, paste the answers back "
-            "into the sheet, then import. Imported summaries use the standard "
-            "layout, so judge + QA score them like any other.",
+            f"For models with no API (Alisa / GigaChat). Tasks are built from "
+            f"`{self.texts_dir}`; imported summaries go into `{self.summ_dir}`. "
+            f"Export a sheet, run each prompt in the web UI, paste answers back, "
+            f"then import. Imported summaries use the standard layout, so judge + "
+            f"QA score them like any other.",
             id="p_purpose",
         )
         with VerticalScroll(id="wt-body"):
+            with Horizontal(id="wt-model"):
+                yield Label("Model:")
+                yield Select(WEB_UI_MODELS, id="wt_system", allow_blank=False)
             yield Static("1. Export task sheet", classes="step-h")
             with Horizontal(id="wt-exp"):
-                yield Label("System:")
-                yield Input(value="alisa", id="wt_system")
                 yield Label("Texts dir:")
-                yield Input(value="smoke/texts", id="wt_texts")
+                yield Input(value=self.texts_dir, id="wt_texts")
                 yield Label("Levels:")
                 yield Input(value="", id="wt_levels", placeholder="blank = r-grid")
                 yield Button("Export", id="wt_export", variant="primary")
@@ -979,7 +1187,7 @@ class WebTaskScreen(Screen):
                 yield Label("Operator:")
                 yield Input(value="", id="wt_op")
                 yield Label("Out dir:")
-                yield Input(value="smoke/summaries", id="wt_out")
+                yield Input(value=self.summ_dir, id="wt_out")
                 yield Button("Import", id="wt_import", variant="warning")
         yield Button("Back", id="wt_back")
 
@@ -988,32 +1196,116 @@ class WebTaskScreen(Screen):
         if bid == "wt_back":
             self.app.pop_screen()
         elif bid == "wt_export":
-            system = (self.query_one("#wt_system", Input).value or "alisa").strip()
-            texts = (self.query_one("#wt_texts", Input).value or "smoke/texts").strip()
+            system = (self.query_one("#wt_system", Select).value or "alisa")
+            texts = (self.query_one("#wt_texts", Input).value or self.texts_dir).strip()
             levels = (self.query_one("#wt_levels", Input).value or "").strip()
-            out = f"{system}_tasks.md"
+            out = f"{self.summ_dir}/{system}_tasks.md"
             cmd = [PY, "-m", "webtask", "export", "--system", system,
                    "--texts-dir", texts, "--out", out]
             if levels:
                 cmd += ["--levels", levels]
             self.app.push_screen(
-                RunScreen(f"Export {system} sheet", [("export", cmd)])
+                RunScreen(f"Export {system} [{self.phase}]", [("export", cmd)])
             )
         elif bid == "wt_import":
-            system = (self.query_one("#wt_system", Input).value or "alisa").strip()
+            system = (self.query_one("#wt_system", Select).value or "alisa")
             sheet = (self.query_one("#wt_sheet", Input).value or "").strip()
             if not sheet:
                 self.notify("Enter the filled sheet path first", severity="warning")
                 return
             op = (self.query_one("#wt_op", Input).value or "").strip()
-            out = (self.query_one("#wt_out", Input).value or "smoke/summaries").strip()
+            out = (self.query_one("#wt_out", Input).value or self.summ_dir).strip()
             cmd = [PY, "-m", "webtask", "import", "--system", system,
                    "--sheet", sheet, "--out-dir", out]
             if op:
                 cmd += ["--operator", op]
             self.app.push_screen(
-                RunScreen(f"Import {system} sheet", [("import", cmd)])
+                RunScreen(f"Import {system} [{self.phase}]", [("import", cmd)])
             )
+
+
+class ItemsViewerScreen(Screen):
+    """Browse the generated items (QA/MCQ/NLI/stance) per text + manifest hash."""
+
+    def __init__(self, items_dir: str = "smoke/items") -> None:
+        super().__init__()
+        self.items_dir = items_dir
+
+    def compose(self) -> ComposeResult:
+        yield Static(f"GENERATED ITEMS — {self.items_dir}", id="title", classes="big")
+        yield Static(
+            "The frozen measurement items per text (generated from the source). "
+            "Every summary is later scored against these.",
+            id="p_purpose",
+        )
+        with Horizontal(id="res-body"):
+            with Vertical(id="res-list-pane"):
+                yield ListView(id="iv_list")
+            with VerticalScroll(id="res-detail"):
+                yield Static("Select a text", id="iv_detail")
+        yield Button("Back", id="iv_back")
+
+    def on_mount(self) -> None:
+        d = REPO / self.items_dir
+        self.files = sorted(d.glob("*.items.json")) if d.exists() else []
+        self.manifest = {}
+        mf = d / "manifest.json"
+        if mf.exists():
+            try:
+                self.manifest = json.loads(mf.read_text(encoding="utf-8")).get("items", {})
+            except (json.JSONDecodeError, OSError):
+                self.manifest = {}
+        lv = self.query_one("#iv_list", ListView)
+        for f in self.files:
+            tid = f.name.replace(".items.json", "")
+            lv.append(ListItem(Static(tid)))
+        if not self.files:
+            lv.append(ListItem(Static("(no items generated yet)")))
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.list_view.index is None or not self.files:
+            return
+        f = self.files[event.list_view.index]
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return
+        self.query_one("#iv_detail", Static).update(self._format(data))
+
+    def _format(self, data: dict) -> str:
+        tid = data.get("text_id", "")
+        items = data.get("items", {})
+        combined = self.manifest.get(tid, {}).get("combined", "n/a")
+        lines = [f"[b]{tid}[/b]  (gen model: {data.get('model','')})"]
+        lines.append(f"[dim]manifest: {combined}[/dim]")
+
+        qa = items.get("qa", [])
+        lines.append(f"\n[bold]QA — facts ({len(qa)})[/bold]")
+        for it in qa:
+            lines.append(f"  • {it.get('question','')}  →  [dim]{it.get('gold_answer','')}[/dim]")
+
+        mcq = items.get("mcq", [])
+        lines.append(f"\n[bold]MCQ — comprehension ({len(mcq)})[/bold]")
+        for it in mcq:
+            lines.append(f"  • {it.get('question','')}")
+            for j, o in enumerate(it.get("options", [])):
+                mark = "✓" if j == it.get("correct_index") else " "
+                lines.append(f"      [{mark}] {o}")
+
+        nli = items.get("nli", [])
+        lines.append(f"\n[bold]NLI — logic ({len(nli)})[/bold]")
+        for it in nli:
+            lines.append(f"  • {it.get('hypothesis','')}  →  {it.get('label','')}")
+
+        st = items.get("stance", [])
+        lines.append(f"\n[bold]Stance ({len(st)})[/bold]")
+        for it in st:
+            lines.append(f"  • {it.get('claim','')}  →  {it.get('stance','')}")
+        return "\n".join(lines)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "iv_back":
+            self.app.pop_screen()
 
 
 class SmokeApp(App):
@@ -1050,12 +1342,13 @@ class SmokeApp(App):
     #r_note { width: 100%; }
     #r_actions { height: 3; dock: bottom; align-horizontal: center; }
     #summ-list { height: 1fr; }
-    .summ-row, #summ-row0, #summ-row1, #summ-row2, #summ-row3, #summ-row4,
-    #summ-row5, #summ-row6, #summ-row7 { height: 3; align-horizontal: left; }
+    #summ-list Static { width: auto; }
+    #summ-list Button { width: auto; margin: 0 1; }
     #summ-foot { height: 3; dock: bottom; align-horizontal: center; }
     #wt-body { height: 1fr; }
-    #wt-exp, #wt-imp { height: 3; align-horizontal: center; }
-    #wt-exp Label, #wt-imp Label { margin: 0 1 0 2; }
+    #wt-model, #wt-exp, #wt-imp { height: 3; align-horizontal: center; }
+    #wt-model Label, #wt-exp Label, #wt-imp Label { margin: 0 1 0 2; }
+    #wt-model Select { width: 24; }
     #wt-exp Input, #wt-imp Input { width: 22; }
     """
 
